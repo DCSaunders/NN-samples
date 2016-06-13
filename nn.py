@@ -5,8 +5,7 @@ import sklearn
 import sklearn.datasets
 import sklearn.linear_model
 import matplotlib
-
-
+from random import sample
 
 # Evaluate total loss (cross-entropy)
 def calculate_loss(model):
@@ -43,6 +42,10 @@ def predict(mode, x):
     probs = exp_scores / np.sum(exp_scores, axis=1, keepdims = True)
     return np.argmax(probs, axis=1)
 
+def minibatch(X, y, size):
+    x_sub, y_sub = zip(*sample(list(zip(X, y)), size))
+    return np.array(x_sub), np.array(y_sub)
+
 # Learn NN parameters and return model
 # nn_hdim: number of hidden layer nodes
 # num_passes: passes through training data for grad desc
@@ -58,18 +61,20 @@ def build_model(X, y, nn_hdim, num_passes=20000, print_loss=False):
     # Gradient descent: iterate through batches
     for ii in xrange(0, num_passes):
         #forward propagation
-        z1 = X.dot(W1) + b1
+        batchsize = 16
+        Xbatch, ybatch = minibatch(X, y, batchsize)
+        z1 = Xbatch.dot(W1) + b1
         a1 = np.tanh(z1)
         z2 = a1.dot(W2) + b2
         exp_scores = np.exp(z2)
         probs = exp_scores / np.sum(exp_scores, axis=1, keepdims = True)
         # back propagation
         delta3 = probs
-        delta3[range(num_examples), y] -= 1
+        delta3[range(batchsize), ybatch] -= 1
         dW2 = (a1.T).dot(delta3)
         db2 = np.sum(delta3, axis=0, keepdims=True)
-        delta2 = delta3.dot(W2.T)*(1-np.power(a1,2)) # using property of tanh derivative
-        dW1 = np.dot(X.T, delta2)
+        delta2 = delta3.dot(W2.T)*(1-np.power(a1,2)) # from tanh derivative
+        dW1 = np.dot(Xbatch.T, delta2)
         db1 = np.sum(delta2, axis=0)
         # Add regularization terms to weights W
         dW2 += reg_lambda*W2
@@ -135,7 +140,7 @@ nn_output_dim = 2 # output layer dim: num classes
 
 #plotScatter()
 #plotLR()
-for num_hidden in range (1, 10):
+for num_hidden in range (1, 4):
     model = build_model(X, y, num_hidden, num_passes=10000, print_loss=True)
     plot_decision_boundary(lambda x: predict(model, x))
     t = "Decision boundary for hidden layer size %s" % num_hidden
