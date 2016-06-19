@@ -51,6 +51,7 @@ def minibatch(X, y, size):
 # num_passes: passes through training data for grad desc
 # print_loss: if True, print loss every 1000 iterations
 def build_model(X, y, nn_hdim, num_passes=20000, print_loss=False):
+    epsilon = 0.01  # learning rate for gradient descent
     # Initialise parameters to random values
     np.random.seed(0)
     W1 = np.random.randn(nn_input_dim, nn_hdim) / np.sqrt(nn_input_dim)
@@ -84,6 +85,9 @@ def build_model(X, y, nn_hdim, num_passes=20000, print_loss=False):
         b1+= -epsilon*db1
         W2+= -epsilon*dW2
         b2+= -epsilon*db2
+
+        if ii%100 == 0:
+            epsilon = 0.9*epsilon
         model = {'W1': W1,'b1': b1,'W2': W2,'b2': b2}
         if print_loss and ii%1000 == 0:
             print "Loss after iteration %i: %f" %(ii, calculate_loss(model))
@@ -122,25 +126,21 @@ def plotLR():
 # Display plots inline and change default figure size
 matplotlib.rcParams['figure.figsize'] = (5.0, 4.0)
 
-
-nn_input_dim = 2  # input layer dimensionality
-nn_output_dim = 2  # output layer dimensionality
 # Gradient descent parameters handpicked
-epsilon = 0.01  # learning rate for gradient descent
 reg_lambda = 0.01  # regularization strength
 
 
 # Create dataset
 np.random.seed(0)
-X, y = sklearn.datasets.make_moons(200, noise=0.20)
-num_examples = len(X) # training set size
-nn_input_dim = 2 # input layer dim: x,y
-nn_output_dim = 2 # output layer dim: num classes
-#num_hidden = 3 # number of hidden layers
+X, y = sklearn.datasets.make_blobs(n_samples=300, centers=3)
 
+#X, y = sklearn.datasets.make_moons(200, noise=0.20) #2-class dataset
+num_examples = len(X) # training set size
+nn_input_dim = 2 # input layer dim
+nn_output_dim = 3 # output layer dim: num classes
 #plotScatter()
 #plotLR()
-for num_hidden in range (1, 4):
+for num_hidden in range (3, 10):
     model = build_model(X, y, num_hidden, num_passes=10000, print_loss=True)
     plot_decision_boundary(lambda x: predict(model, x))
     t = "Decision boundary for hidden layer size %s" % num_hidden
