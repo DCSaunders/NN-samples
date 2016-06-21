@@ -10,35 +10,44 @@ from random import sample
 # Evaluate total loss (cross-entropy)
 def calculate_loss(model):
     # Weights between input and hidden layer
+    W_in, b_in = model['W_in'], model['b_in']
+    # Weights between hidden layers
     W1, b1 = model['W1'], model['b1']
     # Weights between hidden layer and output
-    W2, b2 = model['W2'], model['b2']
+    W_out, b_out = model['W_out'], model['b_out']
     # Forward propagation to calculate predictions
-    z1 = X.dot(W1) + b1
+    z_in = X.dot(W_in) + b_in
     # tanh activation function at hidden layer
+    a_in = np.tanh(z_in)
+    # Between hidden layers
+    z1 = a_in.dot(W1) + b1
     a1 = np.tanh(z1)
-    z2 = a1.dot(W2) + b2
+    z_out = a1.dot(W_out) + b_out
     # softmax activation function at output layer
-    exp_scores = np.exp(z2)
+    exp_scores = np.exp(z_out)
     probs = exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
     # Calulate loss
     true_logprobs = -np.log(probs[range(num_examples),y])
     data_loss = np.sum(true_logprobs)
     # Add regularization term
-    data_loss +=reg_lambda/2 * (np.sum(np.square(W1)) + np.sum(np.square(W2)))
+    data_loss +=reg_lambda/2 * (np.sum(np.square(W_in)) + np.sum(np.square(W_out)))
     return 1./num_examples * data_loss
 
 # Predict a NN output (0 or 1)
 def predict(mode, x):
     # Weights between input and hidden layer
+    W_in, b_in = model['W_in'], model['b_in']
+    # Weights between hidden layers
     W1, b1 = model['W1'], model['b1']
     # Weights between hidden layer and output
-    W2, b2 = model['W2'], model['b2']
+    W_out, b_out = model['W_out'], model['b_out']
     #Forward propagation
-    z1 = x.dot(W1) + b1
+    z_in = x.dot(W_in) + b_in
+    a_in = np.tanh(z_in)
+    z1 = a_in.dot(W1) + b1
     a1 = np.tanh(z1)
-    z2 = a1.dot(W2) + b2
-    exp_scores = np.exp(z2)
+    z_out = a1.dot(W_out) + b_out
+    exp_scores = np.exp(z_out)
     probs = exp_scores / np.sum(exp_scores, axis=1, keepdims = True)
     return np.argmax(probs, axis=1)
 
@@ -54,41 +63,59 @@ def build_model(X, y, nn_hdim, num_passes=20000, print_loss=False):
     epsilon = 0.01  # learning rate for gradient descent
     # Initialise parameters to random values
     np.random.seed(0)
-    W1 = np.random.randn(nn_input_dim, nn_hdim) / np.sqrt(nn_input_dim)
+    W_in = np.random.randn(nn_input_dim, nn_hdim) / np.sqrt(nn_input_dim)
+    b_in = np.zeros((1,nn_hdim))
+
+    W1 = np.random.randn(nn_hdim, nn_hdim) / np.sqrt(nn_hdim)
     b1 = np.zeros((1,nn_hdim))
-    W2 = np.random.randn(nn_hdim, nn_output_dim) / np.sqrt(nn_hdim)
-    b2 = np.zeros((1,nn_output_dim))
+
+    W_out = np.random.randn(nn_hdim, nn_output_dim) / np.sqrt(nn_hdim)
+    b_out = np.zeros((1,nn_output_dim))
     model = {} # to return
     # Gradient descent: iterate through batches
     for ii in xrange(0, num_passes):
-        #forward propagation
+        # Minibatch
         batchsize = 16
         Xbatch, ybatch = minibatch(X, y, batchsize)
-        z1 = Xbatch.dot(W1) + b1
+       
+        # forward propagation
+        z_in = Xbatch.dot(W_in) + b_in
+        a_in = np.tanh(z_in)
+        # Between hidden layers
+        z1 = a_in.dot(W1) + b1
         a1 = np.tanh(z1)
-        z2 = a1.dot(W2) + b2
-        exp_scores = np.exp(z2)
+        # Output
+        z_out = a1.dot(W_out) + b_out
+        exp_scores = np.exp(z_out)
         probs = exp_scores / np.sum(exp_scores, axis=1, keepdims = True)
+
         # back propagation
         delta3 = probs
         delta3[range(batchsize), ybatch] -= 1
-        dW2 = (a1.T).dot(delta3)
-        db2 = np.sum(delta3, axis=0, keepdims=True)
-        delta2 = delta3.dot(W2.T)*(1-np.power(a1,2)) # from tanh derivative
-        dW1 = np.dot(Xbatch.T, delta2)
+        dW_out = (a1.T).dot(delta3)
+        db_out = np.sum(delta3, axis=0, keepdims=True)
+        delta2 = delta3.dot(W_out.T)*(1-np.power(a1,2)) # from tanh derivative
+        dW1 = (a_in.T).dot(delta2)
         db1 = np.sum(delta2, axis=0)
+        delta1 = delta2.dot(W1.T)*(1-np.power(a_in,2))
+        dW_in = np.dot(Xbatch.T, delta1)
+        db_in = np.sum(delta1, axis=0)
+        
         # Add regularization terms to weights W
-        dW2 += reg_lambda*W2
+        dW_out += reg_lambda*W_out
+        dW_in += reg_lambda*W_in
         dW1 += reg_lambda*W1
         # Gradient descent parameter update
+        W_in+= -epsilon*dW_in
+        b_in+= -epsilon*db_in
         W1+= -epsilon*dW1
         b1+= -epsilon*db1
-        W2+= -epsilon*dW2
-        b2+= -epsilon*db2
+        W_out+= -epsilon*dW_out
+        b_out+= -epsilon*db_out
 
         if ii%100 == 0:
             epsilon = 0.9*epsilon
-        model = {'W1': W1,'b1': b1,'W2': W2,'b2': b2}
+        model = {'W_in': W_in,'b_in': b_in,'W1' : W1,'b1' : b1, 'W_out': W_out,'b_out': b_out}
         if print_loss and ii%1000 == 0:
             print "Loss after iteration %i: %f" %(ii, calculate_loss(model))
     return model         
