@@ -1,0 +1,91 @@
+Learning from Real Users: Rating Dialogue Success with Neural Networks for
+Reinforcement Learning in Spoken Dialogue Systems
+
+- To train a statistical SDS, need to know whether task was successful
+- Previously: give a task to users (real or simulated) - see whether achieved
+- Real use: we don't know the task without feedback (rare, inconsistent)
+- Here, evaluate turn-level features without prior knowledge of task
+- Here, training dialogues are from simulated users.
+- SDS can be cast as a POMDP for noisy speech/semantic decoding uncertainty
+- POMDP policy trained with episodic RL where each dialogue is an episode
+- Here, demonstrate we can *train* the SDS without ever knowing user goals
+- Previously trained with simulated or recruited users with known goal.
+- Previously, known goal gives an objective function: not possible here.
+- Previously, PARADISE framework uses task completion knowledge
+- Previously, Asri et al learned a reward function, but no real users
+- Paid users don't care about task completion and may not follow the goal
+- Success: provide all information asked for it, satisfying user constraints
+- Can avoid objective failure by including subjective assessment
+- Only learn dialogues where subjective and objective assessment are the same
+- Here, we don't ever have objective assessment
+- Here, use RNNs and CNNs with certain features to rate success automatically
+- Performance metric 1: accuracy in estimated task success
+- Performance metric 2: root mean square error in estimating reward function
+- Training data from training gaussian process policies with a simulated user
+- To get training data, had objective success and speed reinforcement
+- For all models, one turn is one system+user exchange
+- Each turn, feature vector extracted in form of concatenated sections.
+- First, 1-hot encoded top-ranked dialogue act.
+- Then BSV: 1-hot distributions over all goal/method/history variables
+- Then 1-hot encoded system summary action, then turn number
+- Success seems to be treated as binary here
+- Dialogue gives a variable number of feature vectors
+- RNN manages variable length dialogue by updating hidden layer at each *turn*
+- CNN considers whole dialogue as matrix of appended turn feature vectors
+- Convolutional filter size FxW used: F is feature dimension, W width across time
+- Narrow convolution used (W-1 0-padding so can narrow convolve with 1 turn)
+- W-1 0-padding also lets consider turn sequences of different lengths
+- Multiple filters -> max-pooled to scalars -> concatenated, fed into MLP
+- Had choice of three supervised training targetsfor final layer
+- 1) Classifiers to predict (binary) objective task succcess (hard label output)
+- 2) Classify return for whole dialogue (options constrained via max turn number)
+- 3) Trains with actual return value as target - MSE loss function
+- 2) and 3) infer success from the return equation R = 20(S) - N
+- RNN generally outperformed CNN. Binary classification models most accurate.
+- Online training 1: baseline with knowledge of task to find reward.
+- Online training 2: system trained with only RNN to compute reward
+- Averaged results from training 3 policies for each system.
+- RNN used every dialogue (not just obj=subj cases) so more efficient
+
+
+Reward Shaping with Recurrent Neural Networks for Speeding up
+On-Line Policy Learning in Spoken Dialogue Systems
+
+- RL requires system to explore state-action space to learn behaviour
+- Learning online with real users is expensive
+- Reward shaping, as well as task-oriented feedback, can help
+- This is RNNs training on dialogues with a simulated user
+- A policy maps belief states to [distributions over sets of] system actions
+- The most informative rewards come at dialogue conclusion, not end-of-turns
+- Want to minimise client exposure to suboptimal behaviour with real users
+- Reward shaping adds domain knowledge for earlier feedback
+- Previously, reward shaping learned through dialogue (non-statistical)
+- Previously also giving expert ratings at state transition level.
+- But modifying environmental reward modifies optimal policy.
+- Want to rate dialogues at turns, with reward shaping, without prior knowledge
+- Every turn, extract input feature and update hidden layer.
+- Feature vector: real BSV from distribution over user act, method and goal
+- Also, 1-hot encoded user and summary system actions.
+- Also, normalised turn number as a percentage of max allowed turns (30 here)
+- Turn returns sum to overall dialogue return for good turn-level predictions
+- Turn return predictions can then be good reward shaping signals
+- RNN with LSTM/GRU units were slightly better than basic RNN
+- For reward shaping (using only first 1k dialogues) GRU best (just)
+
+
+
+
+ASR - Automatic Speech Recognition
+BSV - Belief State Vector
+CN - Confusion Network
+CNN - Convolution Neural Network
+GRU - Gated Recurrent Unit
+LSTM - Long Short Term Memory
+MLP - Multi-Layer Perceptron
+NN - Neural Network
+POMDP - Partially Observable Markov Decision Process
+RL - Reinforcement Learning
+RNN - Recurrent Neural Network
+SDS - Spoken Dialogue System
+SER - Semantic Error Rate
+SLU - Spoken Language Understanding
