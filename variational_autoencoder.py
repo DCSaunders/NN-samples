@@ -10,56 +10,53 @@ tf.set_random_seed(0)
 
 class VariationalAutoencoder(object):
     def __init__(self, dimensions, transfer_func=tf.nn.softplus, learning_rate=0.001, batch_size=100):
-        self.dimensions = dimensions
+        self.weights = dict()
         self.transfer_func = transfer_func
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.x = tf.placeholder(tf.float32, [None, dimensions["n_input"]]) 
-        self._init_network()
+        self._init_network(dimensions)
         self._init_optimizer()
         self.sess = tf.Session()
         self.sess.run(tf.initialize_all_variables())
 
-    def _init_network(self):
-        weights = dict()
-        self._init_weights('enc', weights, n_in=self.dimensions['n_input'], 
-                           n_h_1=self.dimensions['n_h_enc_1'], n_h_2=self.dimensions['n_h_enc_2'], 
-                           n_out=self.dimensions['n_z'])
-        self._init_weights('dec', weights, n_in=self.dimensions['n_z'], 
-                           n_h_1=self.dimensions['n_h_dec_1'], n_h_2=self.dimensions['n_h_dec_2'], 
-                           n_out=self.dimensions['n_input'])
-        self.z_mean, self.z_log_var = self._enc_network(weights['enc'])
-        eps = tf.random_normal((self.batch_size, self.dimensions['n_z']), 0, 1, dtype=tf.float32)
+    def _init_network(self, dimensions):
+        self._init_weights('enc', n_in=dimensions['n_input'],  n_h_1=dimensions['n_h_enc_1'],
+                           n_h_2=dimensions['n_h_enc_2'], n_out=dimensions['n_z'])
+        self._init_weights('dec', n_in=dimensions['n_z'], n_h_1=dimensions['n_h_dec_1'],
+                           n_h_2=dimensions['n_h_dec_2'],  n_out=dimensions['n_input'])
+        self.z_mean, self.z_log_var = self._enc_network()
+        eps = tf.random_normal((self.batch_size, dimensions['n_z']), 0, 1, dtype=tf.float32)
         # reparameterization trick for encoder latent variable
         self.z = tf.add(self.z_mean, tf.mul(tf.sqrt(tf.exp(self.z_log_var)), eps))
-        self.reconstruct_mean = self._dec_network(weights['dec'])
+        self.reconstruct_mean = self._dec_network()
     
-    def _init_weights(self, name, all_weights, n_in, n_h_1, n_h_2, n_out):
+    def _init_weights(self, name, n_in, n_h_1, n_h_2, n_out):
         xavier = tf.contrib.layers.xavier_initializer()
-        all_weights[name] = dict(
+        self.weights[name] = dict(
             weights=dict(
-                h1=tf.get_variable("h1_" + name, [n_in, n_h_1], initializer=xavier),
-                h2=tf.get_variable("h2_" + name, [n_h_1, n_h_2], initializer=xavier),
-                out_mean=tf.get_variable("mean_" + name, [n_h_2, n_out], initializer=xavier),
-                out_log_var=tf.get_variable("var_" + name, [n_h_2, n_out], initializer=xavier)),
+                h1=tf.Variable(xavier([n_in, n_h_1])),
+                h2=tf.Variable(xavier([n_h_1, n_h_2])),
+                out_mean=tf.Variable(xavier([n_h_2, n_out])),
+                out_log_var=tf.Variable(xavier([n_h_2, n_out]))),
             biases=dict(
                 h1=tf.Variable(tf.zeros([n_h_1], dtype=tf.float32)),
                 h2=tf.Variable(tf.zeros([n_h_2], dtype=tf.float32)),
                 out_mean=tf.Variable(tf.zeros([n_out], dtype=tf.float32)),
                 out_log_var=tf.Variable(tf.zeros([n_out], dtype=tf.float32))))
 
-    def _enc_network(self, enc_weights):
+    def _enc_network(self):
         # Encoder mapping inputs onto Gaussian in latent space
-        w, b = enc_weights['weights'], enc_weights['biases']
+        w, b = self.weights['enc']['weights'], self.weights['enc']['biases']
         layer_1 = self.transfer_func(tf.add(tf.matmul(self.x, w['h1']), b['h1']))
         layer_2 = self.transfer_func(tf.add(tf.matmul(layer_1, w['h2']), b['h2']))
         z_mean = tf.add(tf.matmul(layer_2, w['out_mean']), b['out_mean'])
         z_log_var = tf.add(tf.matmul(layer_2, w['out_log_var']), b['out_log_var'])
         return z_mean, z_log_var
 
-    def _dec_network(self, dec_weights):
-        w, b = dec_weights['weights'], dec_weights['biases']
+    def _dec_network(self):
         # Decoder mapping latent space onto Bernoulli in data space
+        w, b = self.weights['dec']['weights'], self.weights['dec']['biases']
         layer_1 = self.transfer_func(tf.add(tf.matmul(self.z, w['h1']), b['h1']))
         layer_2 = self.transfer_func(tf.add(tf.matmul(layer_1, w['h2']), b['h2']))
         x_reconstruct_mean = tf.nn.sigmoid(tf.add(tf.matmul(layer_2, w['out_mean']), b['out_mean']))
@@ -118,10 +115,10 @@ def train(dimensions, learning_rate=0.001, batch_size=100, training_epochs=10, d
             print "Epoch: {:04d} cost={:.9f}".format(epoch + 1, avg_cost)
     return vae
 
-dimensions = dict(n_h_enc_1=500, # Encoder 1st hidden layer size
-                  n_h_enc_2=500, # Encoder 2nd hidden layer size
-                  n_h_dec_1=500, # Decoder 1st hidden layer size
-                  n_h_dec_2=500, # Decoder 2st hidden layer size
+dimensions = dict(n_h_enc_1=300, # Encoder 1st hidden layer size
+                  n_h_enc_2=300, # Encoder 2nd hidden layer size
+                  n_h_dec_1=300, # Decoder 1st hidden layer size
+                  n_h_dec_2=300, # Decoder 2st hidden layer size
                   n_input=784, # MNIST data input (img shape: 28*28)
                   n_z=20)  # Latent variable dimensionality
 mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
@@ -141,4 +138,4 @@ for i in range(5):
     plt.title("Reconstruction")
     plt.colorbar()
 plt.tight_layout()
-plt.show()
+
