@@ -1,3 +1,4 @@
+*.pyc
 *~
 simple-examples/*
 MNIST_data/*
