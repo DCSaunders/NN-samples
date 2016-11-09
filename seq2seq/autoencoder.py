@@ -38,10 +38,10 @@ tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size", 40000, "Sequence vocabulary size.")
 tf.app.flags.DEFINE_string("train_path", "../simple-examples/data/ptb.train.txt", "Training data file")
 tf.app.flags.DEFINE_string("dev_path", "../simple-examples/data/ptb.valid.txt", "Development data file")
-tf.app.flags.DEFINE_string("chkpt_dir", "/tmp", "Training directory.")
+tf.app.flags.DEFINE_string("chkpt_dir", "/tmp", "Stored checkpoint directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
-tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
+tf.app.flags.DEFINE_integer("steps_per_checkpoint", 50,
                             "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
@@ -52,7 +52,7 @@ FLAGS = tf.app.flags.FLAGS
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
-_buckets = [(5, 5), (10, 10), (20, 20), (40, 40)]
+_buckets = [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)]
 
 
 def read_data(data_path, max_size=None):
@@ -153,7 +153,7 @@ def train():
             start_time = time.time()
             encoder_inputs, decoder_inputs, target_weights = model.get_batch(
                 train_set, bucket_id)
-            _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+            _, step_loss, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
                                          target_weights, bucket_id, False)
             step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
             loss += step_loss / FLAGS.steps_per_checkpoint
@@ -166,6 +166,8 @@ def train():
                 print ("global step %d learning rate %.4f step-time %.2f perplexity "
                        "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
                            step_time, perplexity))
+                print ("Original: {}".format(encoder_inputs))
+                print ("Logits: {}".format(output_logits))
             # Decrease learning rate if no improvement was seen over last 3 times.
                 if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
                     sess.run(model.learning_rate_decay_op)
@@ -190,14 +192,15 @@ def train():
 
 
 def decode():
+    print("Decoding interactively")
     with tf.Session() as sess:
         # Create model and load parameters.
         model = create_model(sess, True)
         model.batch_size = 1  # We decode one sentence at a time.
         # Load vocabularies.
         vocab_path = "vocab%d" % FLAGS.vocab_size
-        vocab, rev_vocab = data_utils.initialize_vocabulary(vocab_path)
-
+        vocab, rev_vocab = data_utils.initialize_vocab(vocab_path)
+        
         # Decode from standard input.
         sys.stdout.write("> ")
         sys.stdout.flush()
