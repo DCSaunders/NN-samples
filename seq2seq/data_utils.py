@@ -52,7 +52,7 @@ def basic_tokenizer(sentence):
     words = []
     for space_separated_fragment in sentence.strip().split():
         words.extend(_WORD_SPLIT.split(space_separated_fragment))
-        return [w for w in words if w]
+    return [w for w in words if w]
 
 
 def create_vocab(vocab_path, data_path, max_vocab_size,

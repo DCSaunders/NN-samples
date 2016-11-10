@@ -35,13 +35,13 @@ tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("size", 512, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
-tf.app.flags.DEFINE_integer("vocab_size", 40000, "Sequence vocabulary size.")
+tf.app.flags.DEFINE_integer("vocab_size", 20000, "Sequence vocabulary size.")
 tf.app.flags.DEFINE_string("train_path", "../simple-examples/data/ptb.train.txt", "Training data file")
 tf.app.flags.DEFINE_string("dev_path", "../simple-examples/data/ptb.valid.txt", "Development data file")
 tf.app.flags.DEFINE_string("chkpt_dir", "/tmp", "Stored checkpoint directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
-tf.app.flags.DEFINE_integer("steps_per_checkpoint", 50,
+tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100,
                             "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
@@ -166,8 +166,8 @@ def train():
                 print ("global step %d learning rate %.4f step-time %.2f perplexity "
                        "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
                            step_time, perplexity))
-                print ("Original: {}".format(encoder_inputs))
-                print ("Logits: {}".format(output_logits))
+                #print ("Original: {}".format(encoder_inputs))
+                #print ("Logits: {}".format(output_logits))
             # Decrease learning rate if no improvement was seen over last 3 times.
                 if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
                     sess.run(model.learning_rate_decay_op)
