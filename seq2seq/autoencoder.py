@@ -38,7 +38,7 @@ tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size", 20000, "Sequence vocabulary size.")
 tf.app.flags.DEFINE_string("train_path", "../simple-examples/data/ptb.train.txt", "Training data file")
 tf.app.flags.DEFINE_string("dev_path", "../simple-examples/data/ptb.valid.txt", "Development data file")
-tf.app.flags.DEFINE_string("chkpt_dir", "/tmp", "Stored checkpoint directory.")
+tf.app.flags.DEFINE_string("chkpt_dir", "../../checkpoint-14-11-16", "Stored checkpoint directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100,
@@ -104,6 +104,7 @@ def create_model(session, forward_only):
         forward_only=forward_only,
         dtype=dtype)
     ckpt = tf.train.get_checkpoint_state(FLAGS.chkpt_dir)
+    print (ckpt)
     if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         model.saver.restore(session, ckpt.model_checkpoint_path)

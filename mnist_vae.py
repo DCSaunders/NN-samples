@@ -21,15 +21,23 @@ class VariationalAutoencoder(object):
         self.sess.run(tf.initialize_all_variables())
 
     def _init_network(self, dimensions):
-        self._init_weights('enc', n_in=dimensions['n_input'],  n_h_1=dimensions['n_h_enc_1'],
-                           n_h_2=dimensions['n_h_enc_2'], n_out=dimensions['n_z'])
-        self._init_weights('dec', n_in=dimensions['n_z'], n_h_1=dimensions['n_h_dec_1'],
-                           n_h_2=dimensions['n_h_dec_2'],  n_out=dimensions['n_input'])
+        self._init_weights('enc',
+                           n_in=dimensions['n_input'],
+                           n_h_1=dimensions['n_h_enc_1'],
+                           n_h_2=dimensions['n_h_enc_2'],
+                           n_out=dimensions['n_z'])
+        self._init_weights('dec',
+                           n_in=dimensions['n_z'],
+                           n_h_1=dimensions['n_h_dec_1'],
+                           n_h_2=dimensions['n_h_dec_2'],
+                           n_out=dimensions['n_input'])
         self.z_mean, self.z_log_var = self._enc_network()
-        eps = tf.random_normal((self.batch_size, dimensions['n_z']), 0, 1, dtype=tf.float32)
+        eps = tf.random_normal((self.batch_size, dimensions['n_z']),
+                               0, 1, dtype=tf.float32)
         # reparameterization trick for encoder latent variable
-        self.z = tf.add(self.z_mean, tf.mul(tf.sqrt(tf.exp(self.z_log_var)), eps))
-        self.reconstruct_mean = self._dec_network()
+        self.z = tf.add(self.z_mean,
+                        tf.mul(tf.sqrt(tf.exp(self.z_log_var)), eps))
+        self.recon_mean = self._dec_network()
     
     def _init_weights(self, name, n_in, n_h_1, n_h_2, n_out):
         xavier = tf.contrib.layers.xavier_initializer()
@@ -57,10 +65,13 @@ class VariationalAutoencoder(object):
     def _dec_network(self):
         # Decoder mapping latent space onto Bernoulli in data space
         w, b = self.weights['dec']['weights'], self.weights['dec']['biases']
-        layer_1 = self.transfer_func(tf.add(tf.matmul(self.z, w['h1']), b['h1']))
-        layer_2 = self.transfer_func(tf.add(tf.matmul(layer_1, w['h2']), b['h2']))
-        x_reconstruct_mean = tf.nn.sigmoid(tf.add(tf.matmul(layer_2, w['out_mean']), b['out_mean']))
-        return x_reconstruct_mean
+        layer_1 = self.transfer_func(tf.add(tf.matmul(self.z, w['h1']),
+                                            b['h1']))
+        layer_2 = self.transfer_func(tf.add(tf.matmul(layer_1, w['h2']),
+                                            b['h2']))
+        x_recon_mean = tf.nn.sigmoid(tf.add(tf.matmul(layer_2, w['out_mean']),
+                                            b['out_mean']))
+        return x_recon_mean
 
     def _init_optimizer(self):
         # Find encoder (KL divergence) and decoder (E[P(X|z)]) loss
@@ -68,16 +79,18 @@ class VariationalAutoencoder(object):
                                             - tf.square(self.z_mean)
                                             - tf.exp(self.z_log_var), 1)
         decoder_loss = -tf.reduce_sum(
-                          self.x * tf.log(1e-10 + self.reconstruct_mean) 
-                        + (1 - self.x) * tf.log(1e-10 + (1 - self.reconstruct_mean)), 1)
+                          self.x * tf.log(1e-10 + self.recon_mean) 
+                        + (1 - self.x) * tf.log(1e-10 + (1 - self.recon_mean)), 1)
         self.cost = tf.reduce_mean(decoder_loss + encoder_loss)
-        self.optimizer = tf.train.AdamOptimizer(self.learning_rate).minimize(self.cost)
+        self.optimizer = tf.train.AdamOptimizer(self.learning_rate).minimize(
+            self.cost)
 
     def partial_fit(self, X):
        """Train model based on mini-batch of input data.
        Return cost of mini-batch.
        """
-       _, cost = self.sess.run((self.optimizer, self.cost), feed_dict={self.x: X})
+       _, cost = self.sess.run((self.optimizer, self.cost),
+                               feed_dict={self.x: X})
        return cost
     
     def transform(self, X):
@@ -95,15 +108,17 @@ class VariationalAutoencoder(object):
             z_mu = np.random.normal(size=self.dimensions["n_z"])
         # Note: This maps to mean of distribution, we could alternatively
         # sample from Gaussian distribution
-        return self.sess.run(self.reconstruct_mean, feed_dict={self.z: z_mu})
+        return self.sess.run(self.recon_mean, feed_dict={self.z: z_mu})
     
     def reconstruct(self, X):
         """ Use VAE to reconstruct given data. """
-        return self.sess.run(self.reconstruct_mean, feed_dict={self.x: X})
+        return self.sess.run(self.recon_mean, feed_dict={self.x: X})
 
 
-def train(dimensions, learning_rate=0.001, batch_size=100, training_epochs=10, display_step=1):
-    vae = VariationalAutoencoder(dimensions, learning_rate=learning_rate, batch_size=batch_size)
+def train(dimensions, learning_rate=0.001, batch_size=100,
+          training_epochs=10, display_step=1):
+    vae = VariationalAutoencoder(dimensions, learning_rate=learning_rate,
+                                 batch_size=batch_size)
     for epoch in range(training_epochs):
         avg_cost = 0.0
         batch_count = int(n_samples / batch_size)

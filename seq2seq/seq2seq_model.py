@@ -82,7 +82,7 @@ class Seq2SeqModel(object):
         self.buckets = buckets
         self.batch_size = batch_size
         self.learning_rate = tf.Variable(
-        float(learning_rate), trainable=False, dtype=dtype)
+            float(learning_rate), trainable=False, dtype=dtype)
         self.learning_rate_decay_op = self.learning_rate.assign(
             self.learning_rate * learning_rate_decay_factor)
         self.global_step = tf.Variable(0, trainable=False)
@@ -104,7 +104,9 @@ class Seq2SeqModel(object):
                 local_w_t = tf.cast(w_t, tf.float32)
                 local_b = tf.cast(b, tf.float32)
                 local_inputs = tf.cast(inputs, tf.float32)
-                return tf.cast(tf.nn.sampled_softmax_loss(local_w_t, local_b, local_inputs, labels, num_samples, self.target_vocab_size), dtype)
+                return tf.cast(tf.nn.sampled_softmax_loss(
+                    local_w_t, local_b, local_inputs, labels,
+                    num_samples, self.target_vocab_size), dtype)
             softmax_loss_function = sampled_loss
 
         #Create the internal multi-layer cell for our RNN.
@@ -227,6 +229,8 @@ class Seq2SeqModel(object):
 
     def get_input_feed(self, size, encoder_inputs, decoder_inputs, target_weights):
         # Input feed: encoder inputs, decoder inputs, target_weights, as provided.
+        # This only works if encoder and decoder inputs are the same size, which they should be 
+        # for an autoencoder.
         input_feed = {}
         for l in xrange(size):
             input_feed[self.encoder_inputs[l].name] = encoder_inputs[l]
@@ -309,12 +313,12 @@ class Seq2SeqModel(object):
 def model_with_buckets_output_state(encoder_inputs, decoder_inputs, targets, weights,
                        buckets, seq2seq, softmax_loss_function=None,
                        per_example_loss=False, name=None):
-  """Create a sequence-to-sequence model with support for bucketing, tweaked from 
-  the original Tensorflow to return hidden state for each bucket as well.
-
-  The seq2seq argument is a function that defines a sequence-to-sequence model,
-  e.g., seq2seq = lambda x, y: basic_rnn_seq2seq(x, y, rnn_cell.GRUCell(24))
-  Args:
+    """Create a sequence-to-sequence model with support for bucketing, tweaked from 
+    the original Tensorflow to return hidden state for each bucket as well.
+    
+    The seq2seq argument is a function that defines a sequence-to-sequence model,
+    e.g., seq2seq = lambda x, y: basic_rnn_seq2seq(x, y, rnn_cell.GRUCell(24))
+    Args:
     encoder_inputs: A list of Tensors to feed the encoder; first seq2seq input.
     decoder_inputs: A list of Tensors to feed the decoder; second seq2seq input.
     targets: A list of 1D batch-sized int32 Tensors (desired output sequence).
@@ -329,47 +333,47 @@ def model_with_buckets_output_state(encoder_inputs, decoder_inputs, targets, wei
       tensor of losses for each sequence in the batch. If unset, it will be
       a scalar with the averaged loss from all examples.
     name: Optional name for this operation, defaults to "model_with_buckets".
-  Returns:
+    Returns:
     A tuple of the form (outputs, losses, states), where:
-      outputs: The outputs for each bucket. Its j'th element consists of a list
-        of 2D Tensors. The shape of output tensors can be either
-        [batch_size x output_size] or [batch_size x num_decoder_symbols]
-        depending on the seq2seq model used.
-      losses: List of scalar Tensors, representing losses for each bucket, or,
-        if per_example_loss is set, a list of 1D batch-sized float Tensors.
-  Raises:
+    outputs: The outputs for each bucket. Its j'th element consists of a list
+    of 2D Tensors. The shape of output tensors can be either
+    [batch_size x output_size] or [batch_size x num_decoder_symbols]
+    depending on the seq2seq model used.
+    losses: List of scalar Tensors, representing losses for each bucket, or,
+    if per_example_loss is set, a list of 1D batch-sized float Tensors.
+    Raises:
     ValueError: If length of encoder_inputs, targets, or weights is smaller
-      than the largest (last) bucket.
-  """
-  if len(encoder_inputs) < buckets[-1][0]:
-    raise ValueError("Length of encoder_inputs (%d) must be at least that of la"
-                     "st bucket (%d)." % (len(encoder_inputs), buckets[-1][0]))
-  if len(targets) < buckets[-1][1]:
-    raise ValueError("Length of targets (%d) must be at least that of last"
+    than the largest (last) bucket.
+    """
+    if len(encoder_inputs) < buckets[-1][0]:
+        raise ValueError("Length of encoder_inputs (%d) must be at least that of la"
+                         "st bucket (%d)." % (len(encoder_inputs), buckets[-1][0]))
+    if len(targets) < buckets[-1][1]:
+        raise ValueError("Length of targets (%d) must be at least that of last"
                      "bucket (%d)." % (len(targets), buckets[-1][1]))
-  if len(weights) < buckets[-1][1]:
-    raise ValueError("Length of weights (%d) must be at least that of last"
-                     "bucket (%d)." % (len(weights), buckets[-1][1]))
+    if len(weights) < buckets[-1][1]:
+        raise ValueError("Length of weights (%d) must be at least that of last"
+                         "bucket (%d)." % (len(weights), buckets[-1][1]))
 
-  all_inputs = encoder_inputs + decoder_inputs + targets + weights
-  losses = []
-  outputs = []
-  states = []
-  with ops.name_scope(name, "model_with_buckets", all_inputs):
-    for j, bucket in enumerate(buckets):
-      with variable_scope.variable_scope(variable_scope.get_variable_scope(),
-                                         reuse=True if j > 0 else None):
-        bucket_outputs, bucket_states = seq2seq(encoder_inputs[:bucket[0]],
-                                                decoder_inputs[:bucket[1]])
-        outputs.append(bucket_outputs)
-        states.append(bucket_states)
-        if per_example_loss:
-          losses.append(sequence_loss_by_example(
-              outputs[-1], targets[:bucket[1]], weights[:bucket[1]],
-              softmax_loss_function=softmax_loss_function))
-        else:
-          losses.append(sequence_loss(
-              outputs[-1], targets[:bucket[1]], weights[:bucket[1]],
-              softmax_loss_function=softmax_loss_function))
-
-  return outputs, losses, states
+    all_inputs = encoder_inputs + decoder_inputs + targets + weights
+    losses = []
+    outputs = []
+    states = []
+    with ops.name_scope(name, "model_with_buckets", all_inputs):
+        for j, bucket in enumerate(buckets):
+            with variable_scope.variable_scope(variable_scope.get_variable_scope(),
+                                               reuse=True if j > 0 else None):
+                bucket_outputs, bucket_states = seq2seq(encoder_inputs[:bucket[0]],
+                                                        decoder_inputs[:bucket[1]])
+                outputs.append(bucket_outputs)
+                states.append(bucket_states)
+                if per_example_loss:
+                    losses.append(sequence_loss_by_example(
+                        outputs[-1], targets[:bucket[1]], weights[:bucket[1]],
+                        softmax_loss_function=softmax_loss_function))
+                else:
+                    losses.append(sequence_loss(
+                        outputs[-1], targets[:bucket[1]], weights[:bucket[1]],
+                        softmax_loss_function=softmax_loss_function))
+    return outputs, losses, states
+                    

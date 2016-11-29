@@ -55,8 +55,8 @@ def basic_tokenizer(sentence):
     return [w for w in words if w]
 
 
-def create_vocab(vocab_path, data_path, max_vocab_size,
-                      tokenizer=None, normalize_digits=True):
+def create_vocab(vocab_path, data_path, max_vocab_size, 
+                 tokenizer=None, normalize_digits=True):
     """Create vocabulary file (if it does not exist yet) from data file.
     Data file is assumed to contain one sentence per line. Each sentence is
     tokenized and digits are normalized (if normalize_digits is set).
