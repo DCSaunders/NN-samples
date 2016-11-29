@@ -12,7 +12,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 FLAGS = None
 
-
 def main(_):
   mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
 
@@ -49,27 +48,31 @@ def main(_):
   y_true = x
   cost = tf.reduce_mean(tf.pow(y_true - y_pred, 2))
   optimizer = tf.train.RMSPropOptimizer(learning_rate).minimize(cost)
+  saver = tf.train.Saver()
 
   with tf.Session() as sess:
     tf.set_random_seed(1234)
-    sess.run(tf.initialize_all_variables())
-    # Train
-    for epoch in range(training_epochs):
-      avg_cost = 0
-      for batch in range(batch_count):
-        batch_xs, _ = mnist.train.next_batch(batch_size)
-        _, batch_cost = sess.run([optimizer, cost], feed_dict={x: batch_xs})
-        avg_cost += batch_cost / batch_count
-      if epoch % display_step == 0:
-        print("Epoch: {:03d}, cost={:.9f}".format(epoch + 1, avg_cost))
-    
-    # Dump hidden layer vectors
-    with open(FLAGS.data_dir + '/hidden_train', 'w') as f:
-      for im in mnist.train.images:
-        f.write(sess.run(enc_layer_1, feed_dict={x: [im]}) + '\n')
-    with open(FLAGS.data_dir + '/hidden_test', 'w') as f:
-      for im in mnist.train.images:
-        f.write(sess.run(enc_layer_1, feed_dict={x: [im]}) + '\n')
+    if FLAGS.load:
+      saver.restore(sess, FLAGS.load)
+    else:
+      sess.run(tf.initialize_all_variables())
+      # Train
+      for epoch in range(training_epochs):
+        avg_cost = 0
+        for batch in range(batch_count):
+          batch_xs, _ = mnist.train.next_batch(batch_size)
+          _, batch_cost = sess.run([optimizer, cost], feed_dict={x: batch_xs})
+          avg_cost += batch_cost / batch_count
+        if epoch % display_step == 0:
+          print("Epoch: {:03d}, cost={:.9f}".format(epoch + 1, avg_cost))
+      saver.save(sess, FLAGS.save_dir + '/model.ckpt')
+      # Dump hidden layer vectors
+      with open(FLAGS.data_dir + '/hidden_train', 'w') as f:
+        for im in mnist.train.images:
+          np.savetxt(f, sess.run(enc_layer_2, feed_dict={x: [im]}))
+      with open(FLAGS.data_dir + '/hidden_test', 'w') as f:
+        for im in mnist.test.images:
+          np.savetxt(f, sess.run(enc_layer_1, feed_dict={x: [im]}))
 
     # Reconstruct some examples
     reconstructions = sess.run(y_pred, feed_dict={
@@ -78,13 +81,17 @@ def main(_):
     for im in range(reconstruct_count):
       ax[0][im].imshow(np.reshape(mnist.test.images[im], (im_size, im_size)))
       ax[1][im].imshow(np.reshape(reconstructions[im], (im_size, im_size)))
-    fig.show()
-    fig.savefig('mnist_autoenc_reconstr.png')
+    plt.show()
+    #fig.savefig(FLAGS.data_dir + '/mnist_autoenc_reconstr.png')
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--data_dir', type=str, default='/tmp/data',
                       help='Directory for storing data')
+  parser.add_argument('--save_dir', type=str, default='/tmp/data',
+                      help='Directory for saving model')
+  parser.add_argument('--load', type=str, default=None,
+                      help='Directory from which to load model')
   FLAGS = parser.parse_args()
   np.random.seed(1234)
   tf.app.run()
