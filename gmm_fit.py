@@ -102,8 +102,12 @@ def save_model(args, gmm, train_samples, proj_samples, label_sample_dict):
 def sample_model(gmm, n_samples):
     samples, labels = gmm.sample(n_samples)
     label_sample_dict = collections.defaultdict(list)
-    for label, sample in zip(labels, samples):
-        label_sample_dict[label].append(sample)
+    responsibilities = gmm.predict_proba(samples)
+    scores = gmm.score_samples(samples)
+    for label, sample, resp, score in zip(
+            labels, samples, responsibilities, scores):
+        label_sample_dict[label].append((sample, resp, score))
+        print resp, score
     return label_sample_dict
 
 if __name__ == '__main__':

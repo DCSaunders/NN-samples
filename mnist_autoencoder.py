@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import cPickle
 
 # Import data
 from tensorflow.examples.tutorials.mnist import input_data
@@ -52,8 +53,20 @@ def main(_):
 
   with tf.Session() as sess:
     tf.set_random_seed(1234)
-    if FLAGS.load:
-      saver.restore(sess, FLAGS.load)
+    if FLAGS.load_model:
+      saver.restore(sess, FLAGS.load_model)
+      if FLAGS.load_samples:
+        with open(FLAGS.load_samples, 'rb') as f:
+            label_sample_dict = cPickle.load(f)
+      for label in label_sample_dict:
+        print(label)
+        reconstructions = sess.run(y_pred, feed_dict={
+          enc_layer_2: label_sample_dict[label][:reconstruct_count]})
+        fig, ax = plt.subplots(1, reconstruct_count, 
+                               figsize=(reconstruct_count, 2))
+        for im in range(reconstruct_count):
+          ax[im].imshow(np.reshape(reconstructions[im], (im_size, im_size)))
+        plt.show()
     else:
       sess.run(tf.initialize_all_variables())
       # Train
@@ -65,24 +78,28 @@ def main(_):
           avg_cost += batch_cost / batch_count
         if epoch % display_step == 0:
           print("Epoch: {:03d}, cost={:.9f}".format(epoch + 1, avg_cost))
-      saver.save(sess, FLAGS.save_dir + '/model.ckpt')
-      # Dump hidden layer vectors
-      with open(FLAGS.data_dir + '/hidden_train', 'w') as f:
-        for im in mnist.train.images:
-          np.savetxt(f, sess.run(enc_layer_2, feed_dict={x: [im]}))
-      with open(FLAGS.data_dir + '/hidden_test', 'w') as f:
-        for im in mnist.test.images:
-          np.savetxt(f, sess.run(enc_layer_1, feed_dict={x: [im]}))
+      save_model(sess, saver, mnist, enc_layer_2, x)
+    reconstruct(sess, mnist, y_pred, x, reconstruct_count, im_size)
 
-    # Reconstruct some examples
-    reconstructions = sess.run(y_pred, feed_dict={
-      x: mnist.test.images[:reconstruct_count]})
-    fig, ax = plt.subplots(2, reconstruct_count, figsize=(reconstruct_count, 2))
-    for im in range(reconstruct_count):
-      ax[0][im].imshow(np.reshape(mnist.test.images[im], (im_size, im_size)))
-      ax[1][im].imshow(np.reshape(reconstructions[im], (im_size, im_size)))
-    plt.show()
-    #fig.savefig(FLAGS.data_dir + '/mnist_autoenc_reconstr.png')
+def reconstruct(sess, mnist, y_pred, x, reconstruct_count, im_size):
+  # Reconstruct some examples
+  reconstructions = sess.run(y_pred, feed_dict={
+    x: mnist.test.images[:reconstruct_count]})
+  fig, ax = plt.subplots(2, reconstruct_count, figsize=(reconstruct_count, 2))
+  for im in range(reconstruct_count):
+    ax[0][im].imshow(np.reshape(mnist.test.images[im], (im_size, im_size)))
+    ax[1][im].imshow(np.reshape(reconstructions[im], (im_size, im_size)))
+  plt.show()
+
+def save_model(sess, saver, mnist, enc_layer_2, x):
+  saver.save(sess, FLAGS.save_dir + '/model.ckpt')
+  # Dump hidden layer vectors
+  with open(FLAGS.data_dir + '/hidden_train', 'w') as f:
+    for im in mnist.train.images:
+      np.savetxt(f, sess.run(enc_layer_2, feed_dict={x: [im]}))
+  with open(FLAGS.data_dir + '/hidden_test', 'w') as f:
+    for im in mnist.test.images:
+      np.savetxt(f, sess.run(enc_layer_2, feed_dict={x: [im]}))
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
@@ -90,8 +107,10 @@ if __name__ == '__main__':
                       help='Directory for storing data')
   parser.add_argument('--save_dir', type=str, default='/tmp/data',
                       help='Directory for saving model')
-  parser.add_argument('--load', type=str, default=None,
+  parser.add_argument('--load_model', type=str, default=None,
                       help='Directory from which to load model')
+  parser.add_argument('--load_samples', type=str, default=None,
+                      help='Directory from which to load pickled samples')
   FLAGS = parser.parse_args()
   np.random.seed(1234)
   tf.app.run()
