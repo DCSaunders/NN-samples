@@ -88,7 +88,8 @@ def get_model(args):
         gmm = fit_samples(samples)
     return gmm, samples, proj_samples
 
-def save_model(args, gmm, train_samples, proj_samples, label_sample_dict):
+def save_model(args, gmm, train_samples, proj_samples,
+               label_sample_dict, label_score_dict):
     if args.save_input:
         with open(args.save_input, 'wb') as f:
             cPickle.dump([train_samples, proj_samples], f)
@@ -97,18 +98,19 @@ def save_model(args, gmm, train_samples, proj_samples, label_sample_dict):
             cPickle.dump(gmm, f)
     if args.save_samples:
         with open(args.save_samples, 'wb') as f:
-            cPickle.dump(label_sample_dict, f)
+            cPickle.dump([label_sample_dict, label_score_dict], f)
 
 def sample_model(gmm, n_samples):
     samples, labels = gmm.sample(n_samples)
     label_sample_dict = collections.defaultdict(list)
-    responsibilities = gmm.predict_proba(samples)
+    label_score_dict = collections.defaultdict(list)
+    #responsibilities = gmm.predict_proba(samples)
     scores = gmm.score_samples(samples)
-    for label, sample, resp, score in zip(
-            labels, samples, responsibilities, scores):
-        label_sample_dict[label].append((sample, resp, score))
-        print resp, score
-    return label_sample_dict
+    for label, sample, score in zip(
+            labels, samples, scores):
+        label_sample_dict[label].append(sample)
+        label_score_dict[label].append(score)
+    return label_sample_dict, label_score_dict
 
 if __name__ == '__main__':
     args = get_args()
@@ -116,5 +118,6 @@ if __name__ == '__main__':
     if args.plot:
         plot_clusters(train_samples, proj_samples, gmm)
     n_samples = 1000
-    label_sample_dict = sample_model(gmm, n_samples)
-    save_model(args, gmm, train_samples, proj_samples, label_sample_dict)
+    label_sample_dict, label_score_dict = sample_model(gmm, n_samples)
+    save_model(args, gmm, train_samples, proj_samples,
+               label_sample_dict, label_score_dict)

@@ -57,14 +57,16 @@ def main(_):
       saver.restore(sess, FLAGS.load_model)
       if FLAGS.load_samples:
         with open(FLAGS.load_samples, 'rb') as f:
-            label_sample_dict = cPickle.load(f)
+            label_sample_dict, label_score_dict = cPickle.load(f)
       for label in label_sample_dict:
-        print(label)
         reconstructions = sess.run(y_pred, feed_dict={
           enc_layer_2: label_sample_dict[label][:reconstruct_count]})
+        scores = label_score_dict[label][:reconstruct_count]
         fig, ax = plt.subplots(1, reconstruct_count, 
                                figsize=(reconstruct_count, 2))
+        fig.suptitle('Samples from GMM component {}'.format(label)) 
         for im in range(reconstruct_count):
+          ax[im].set_title('{:.2f}'.format(scores[im]))
           ax[im].imshow(np.reshape(reconstructions[im], (im_size, im_size)))
         plt.show()
     else:
