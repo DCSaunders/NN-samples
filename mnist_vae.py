@@ -11,6 +11,7 @@ tf.set_random_seed(0)
 class VariationalAutoencoder(object):
     def __init__(self, dimensions, transfer_func=tf.nn.softplus, learning_rate=0.001, batch_size=100):
         self.weights = dict()
+        self.n_z = dimensions['n_z']
         self.transfer_func = transfer_func
         self.learning_rate = learning_rate
         self.batch_size = batch_size
@@ -105,7 +106,7 @@ class VariationalAutoencoder(object):
         generated. Otherwise, z_mu is drawn from prior in latent space.        
         """
         if z_mu is None:
-            z_mu = np.random.normal(size=self.dimensions["n_z"])
+            z_mu = np.random.normal(size=(1, self.n_z))
         # Note: This maps to mean of distribution, we could alternatively
         # sample from Gaussian distribution
         return self.sess.run(self.recon_mean, feed_dict={self.z: z_mu})
@@ -130,6 +131,27 @@ def train(dimensions, learning_rate=0.001, batch_size=100,
             print "Epoch: {:04d} cost={:.9f}".format(epoch + 1, avg_cost)
     return vae
 
+def plot_reconstruct(x_sample, x_reconstruct):
+    plt.figure(figsize=(8, 12))
+    for i in range(5):
+        plt.subplot(5, 2, 2*i + 1)
+        plt.imshow(x_sample[i].reshape(28, 28), vmin=0, vmax=1)
+        plt.title("Test input")
+        plt.colorbar()
+        plt.subplot(5, 2, 2*i + 2)
+        plt.imshow(x_reconstruct[i].reshape(28, 28), vmin=0, vmax=1)
+        plt.title("Reconstruction")
+        plt.colorbar()
+    plt.show()
+
+def plot_generate(vae, reconstruct_count=10):
+    fig, ax = plt.subplots(1, reconstruct_count, figsize=(reconstruct_count, 2))
+    fig.suptitle('Samples from VAE') 
+    for i in range(reconstruct_count):
+        gen = vae.generate()
+        ax[i].imshow(gen.reshape(28, 28), vmin=0, vmax=1)
+    plt.show()
+
 dimensions = dict(n_h_enc_1=300, # Encoder 1st hidden layer size
                   n_h_enc_2=300, # Encoder 2nd hidden layer size
                   n_h_dec_1=300, # Decoder 1st hidden layer size
@@ -142,15 +164,5 @@ batch_size = 100
 vae = train(dimensions, training_epochs=1, batch_size=batch_size)
 x_sample = mnist.test.next_batch(batch_size)[0]
 x_reconstruct = vae.reconstruct(x_sample)
-plt.figure(figsize=(8, 12))
-for i in range(5):
-    plt.subplot(5, 2, 2*i + 1)
-    plt.imshow(x_sample[i].reshape(28, 28), vmin=0, vmax=1)
-    plt.title("Test input")
-    plt.colorbar()
-    plt.subplot(5, 2, 2*i + 2)
-    plt.imshow(x_reconstruct[i].reshape(28, 28), vmin=0, vmax=1)
-    plt.title("Reconstruction")
-    plt.colorbar()
-plt.tight_layout()
-
+plot_reconstruct(x_sample, x_reconstruct)
+#plot_generate(vae)

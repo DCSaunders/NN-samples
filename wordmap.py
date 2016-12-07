@@ -43,10 +43,12 @@ def read_wmap(f_in, wmap):
             tok, index = line.split()
             wmap[tok] = index
 
-def apply_wmap(src, wmap, out_dir):
+def apply_wmap(src, wmap, out_dir, lowercase):
     # Apply wmap to input file line-by-line and save output
-    with open(src, 'r') as f_in, open('{}/{}.idx'.format(out_dir, src), 'w') as f_out:
+    with open(src, 'r') as f_in, open('{}/out.idx'.format(out_dir), 'w') as f_out:
         for line in f_in:
+            if lowercase:
+                line = line.lower()
             out = []
             for tok in line.split():
                 if tok in wmap:
@@ -63,6 +65,6 @@ if __name__ == '__main__':
         construct_wmap(args.file_in, wmap, args.vocab_size, args.lowercase)
         save_wmap(args.out_dir, wmap)
     else:
-        read_wmap(args.wmap, wmap, 'wmap')
-    apply_wmap(args.file_in, wmap, args.out_dir)
+        read_wmap(args.wmap, wmap)
+    apply_wmap(args.file_in, wmap, args.out_dir, args.lowercase)
                
