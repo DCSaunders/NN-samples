@@ -6,7 +6,7 @@ UNK = 'UNK'
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--file_in', help='File of vectors to fit')
+    parser.add_argument('--file_in', help='File of vectors to map')
     parser.add_argument('--vocab_size', type=int, default=10000, 
                         help='Vocab size to use constructing word map')
     parser.add_argument('--lowercase', default=True, action='store_true',
@@ -14,6 +14,8 @@ def get_args():
     parser.add_argument('--wmap', help='Location of wordmap to apply')
     parser.add_argument('--out_dir', default='~', 
                         help='Location to save idx/wmap')
+    parser.add_argument('--reverse', default=False, action='store_true', 
+                        help='True if reversing wordmap (id to word)')
     return parser.parse_args()
 
 def construct_wmap(f_in, wmap, vocab_size, lowercase):
@@ -56,15 +58,26 @@ def apply_wmap(src, wmap, out_dir, lowercase):
                 else:
                     out.append(str(wmap[UNK]))
             f_out.write(' '.join(out) + '\n')
-                
+    
+def reverse_wmap(file_in, wmap):
+    reverse_wmap = {idx: word for word, idx in wmap.items()}
+    with open(file_in, 'r') as f_in:
+        for line in f_in:
+            out = []
+            for idx in line.split(','):
+                out.append(reverse_wmap[idx.strip()])
+            print out
 
 if __name__ == '__main__':
     args = get_args()
     wmap = {'<epsilon>': 0, '<s>': 1, '</s>': 2, UNK: 3}
-    if not args.wmap:
-        construct_wmap(args.file_in, wmap, args.vocab_size, args.lowercase)
-        save_wmap(args.out_dir, wmap)
-    else:
+    if args.wmap:
         read_wmap(args.wmap, wmap)
-    apply_wmap(args.file_in, wmap, args.out_dir, args.lowercase)
+    if args.reverse:
+        reverse_wmap(args.file_in, wmap)
+    else:
+        if not args.wmap:
+            construct_wmap(args.file_in, wmap, args.vocab_size, args.lowercase)
+            save_wmap(args.out_dir, wmap)
+        apply_wmap(args.file_in, wmap, args.out_dir, args.lowercase)
                
