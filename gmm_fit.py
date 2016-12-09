@@ -27,6 +27,9 @@ def get_args():
                         help='Location to save pickled samples from model')
     parser.add_argument('--plot', action='store_true', default=False,
                         help='Project samples/model into two dimensions using TSNE, and save a plot')
+    parser.add_argument('--pickled_in', action='store_true', default=False,
+                        help='If true, input vectors must be unpickled')
+
     return parser.parse_args()
 
 def plot_samples(samples):
@@ -70,8 +73,18 @@ def get_samples(args):
             samples, proj_samples = cPickle.load(f)
             print 'Loaded pickled samples from {}'.format(args.load_input)
     else:
-        samples = np.loadtxt(args.file_in)
-        print 'Loaded samples file from {}'.format(args.file_in)
+        if args.pickled_in:
+            samples = []
+            unpickler = cPickle.Unpickler(open(args.file_in, 'rb'))
+            while True:
+                try:
+                    samples.append(unpickler.load())
+                except (EOFError):
+                    break
+            print 'Unpickled samples from {}'.format(args.file_in)
+        else:
+            samples = np.loadtxt(args.file_in)
+            print 'Loaded samples file from {}'.format(args.file_in)
     if args.plot:
         if not proj_samples:
             proj_samples = tsne(samples, max_iter=200)
