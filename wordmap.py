@@ -3,6 +3,7 @@ import collections
 import string
 
 UNK = 'UNK'
+PUNC = string.punctuation
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -11,6 +12,8 @@ def get_args():
                         help='Vocab size to use constructing word map')
     parser.add_argument('--lowercase', default=True, action='store_true',
                         help='True if lowercasing')
+    parser.add_argument('--keep_punc', default=False, action='store_true',
+                        help='True if keeping punctuation, otherwise stripped')
     parser.add_argument('--wmap', help='Location of wordmap to apply')
     parser.add_argument('--out_dir', default='~', 
                         help='Location to save idx/wmap')
@@ -18,7 +21,7 @@ def get_args():
                         help='True if reversing wordmap (id to word)')
     return parser.parse_args()
 
-def construct_wmap(f_in, wmap, vocab_size, lowercase):
+def construct_wmap(f_in, wmap, vocab_size, lowercase, keep_punc):
     # Construct a wordmap from the text file with a given vocab size and 
     # optional lowercasing.
     c = collections.Counter()
@@ -27,10 +30,17 @@ def construct_wmap(f_in, wmap, vocab_size, lowercase):
             if lowercase:
                 line = line.lower()
             c.update(line.split())
+    if not keep_punc:
+        strip_punc(c)
     index = len(wmap)
     for pair in c.most_common(vocab_size - 3):
         wmap[pair[0]] = index
         index += 1
+
+def strip_punc(counter):
+    # Remove any punctuation from the wordmap counter
+    for punc in PUNC:
+        del counter[punc]
 
 def save_wmap(out_dir, wmap):
     # Save wmap
@@ -45,7 +55,7 @@ def read_wmap(f_in, wmap):
             tok, index = line.split()
             wmap[tok] = index
 
-def apply_wmap(src, wmap, out_dir, lowercase):
+def apply_wmap(src, wmap, out_dir, lowercase, keep_punc):
     # Apply wmap to input file line-by-line and save output
     with open(src, 'r') as f_in, open('{}/out.idx'.format(out_dir), 'w') as f_out:
         for line in f_in:
@@ -56,7 +66,10 @@ def apply_wmap(src, wmap, out_dir, lowercase):
                 if tok in wmap:
                     out.append(str(wmap[tok]))
                 else:
-                    out.append(str(wmap[UNK]))
+                    if not keep_punc and tok in PUNC:
+                        continue
+                    else:
+                        out.append(str(wmap[UNK]))
             f_out.write(' '.join(out) + '\n')
     
 def reverse_wmap(file_in, wmap):
@@ -77,7 +90,7 @@ if __name__ == '__main__':
         reverse_wmap(args.file_in, wmap)
     else:
         if not args.wmap:
-            construct_wmap(args.file_in, wmap, args.vocab_size, args.lowercase)
+            construct_wmap(args.file_in, wmap, args.vocab_size, args.lowercase, args.keep_punc)
             save_wmap(args.out_dir, wmap)
-        apply_wmap(args.file_in, wmap, args.out_dir, args.lowercase)
+        apply_wmap(args.file_in, wmap, args.out_dir, args.lowercase, args.keep_punc)
                
