@@ -78,7 +78,8 @@ def get_samples(args):
             unpickler = cPickle.Unpickler(open(args.file_in, 'rb'))
             while True:
                 try:
-                    samples.append(unpickler.load())
+                    sample = np.array(unpickler.load()[0][0], dtype=float)
+                    samples.append(sample)
                 except (EOFError):
                     break
             print 'Unpickled samples from {}'.format(args.file_in)
