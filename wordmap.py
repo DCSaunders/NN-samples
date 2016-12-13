@@ -15,7 +15,7 @@ def get_args():
     parser.add_argument('--keep_punc', default=False, action='store_true',
                         help='True if keeping punctuation, otherwise stripped')
     parser.add_argument('--wmap', help='Location of wordmap to apply')
-    parser.add_argument('--out_dir', default='~', 
+    parser.add_argument('--out_dir', default='/tmp', 
                         help='Location to save idx/wmap')
     parser.add_argument('--reverse', default=False, action='store_true', 
                         help='True if reversing wordmap (id to word)')
@@ -71,15 +71,16 @@ def apply_wmap(src, wmap, out_dir, lowercase, keep_punc):
                     else:
                         out.append(str(wmap[UNK]))
             f_out.write(' '.join(out) + '\n')
+            print(' '.join(out) + '\n')
     
-def reverse_wmap(file_in, wmap):
+def reverse_wmap(file_in, out_dir, wmap):
     reverse_wmap = {idx: word for word, idx in wmap.items()}
-    with open(file_in, 'r') as f_in:
+    with open(file_in, 'r') as f_in, open(out_dir + '/words', 'w') as f_out:
         for line in f_in:
             out = []
-            for idx in line.split(','):
+            for idx in line.split():
                 out.append(reverse_wmap[idx.strip()])
-            print out
+            f_out.write(' '.join([str(tok) for tok in out]) + '\n')
 
 if __name__ == '__main__':
     args = get_args()
@@ -87,7 +88,7 @@ if __name__ == '__main__':
     if args.wmap:
         read_wmap(args.wmap, wmap)
     if args.reverse:
-        reverse_wmap(args.file_in, wmap)
+        reverse_wmap(args.file_in, args.out_dir, wmap)
     else:
         if not args.wmap:
             construct_wmap(args.file_in, wmap, args.vocab_size, args.lowercase, args.keep_punc)
