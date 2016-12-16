@@ -35,6 +35,8 @@ def get_args():
                         help='Number of GMM components to fit')
     parser.add_argument('--full_covar', action='store_true', default=False,
                         help='Set if Gaussians have full, not diagonal, covariance')
+    parser.add_argument('--interpolate',
+                        help='Location to store samples interpolated between training examples')
 
     return parser.parse_args()
 
@@ -138,18 +140,44 @@ def sample_model(gmm, n_samples):
         label_samples.append({'states': sample, 'label': label, 'score': score})
     return label_samples
 
-def predict_model(gmm, samples, save_labels):
+def predict_model(gmm, samples, save_labels, interpolate, label_samples, interpolate_count=6):
     labels = gmm.predict(samples)
-    with open(save_labels, 'wb') as f:
-        cPickle.dump(zip(samples, labels), f)
+    if save_labels:
+        with open(save_labels, 'wb') as f:
+            cPickle.dump(zip(samples, labels), f)
+    elif interpolate:
+        do_interpolate(zip(labels, samples), label_samples, interpolate, interpolate_count)
+      
+
+def do_interpolate(train_labels_samples, label_samples, interp_file, interpolate_count):
+    label_interps_dict = collections.defaultdict(list)
+    sampled_labels = collections.defaultdict(list)
+    for entry in label_samples:
+        sampled_labels[entry['label']].append(entry['states'])
+    for k, v in sampled_labels.items():
+        print k, len(v)
+    for label, train_sample in train_labels_samples:
+        interpolations = [train_sample]
+        rand_sample = sampled_labels[label].pop()
+        increment = (rand_sample - train_sample) / interpolate_count 
+        for interp_num in range(0, interpolate_count):
+            interpolations.append(interpolations[interp_num] + increment)
+        label_interps_dict[label].append(interpolations)
+    with open(interp_file, 'wb') as f:
+        cPickle.dump(label_interps_dict, f)
+
 
 if __name__ == '__main__':
     args = get_args()
+    n_samples = 100000
+    n_interpolate = 6
+    n_train_samples = 1000
     gmm, train_samples, proj_samples = get_model(args)
-    if args.save_labels:
-        predict_model(gmm, train_samples[:100], args.save_labels)
+    print max(gmm.weights_)
     if args.plot:
         plot_clusters(train_samples, proj_samples, gmm)
-    n_samples = 1000
     label_samples = sample_model(gmm, n_samples)
+    if args.save_labels or args.interpolate:
+        predict_model(gmm, train_samples[:n_train_samples],
+                      args.save_labels, args.interpolate, label_samples, interpolate_count=n_interpolate)
     save_model(args, gmm, train_samples, proj_samples, label_samples)
