@@ -58,17 +58,17 @@ def main(_):
       if FLAGS.load_samples:
         with open(FLAGS.load_samples, 'rb') as f:
             label_sample_dict, label_score_dict = cPickle.load(f)
-      for label in label_sample_dict:
-        reconstructions = sess.run(y_pred, feed_dict={
-          enc_layer_2: label_sample_dict[label][:reconstruct_count]})
-        scores = label_score_dict[label][:reconstruct_count]
-        fig, ax = plt.subplots(1, reconstruct_count, 
-                               figsize=(reconstruct_count, 2))
-        fig.suptitle('Samples from GMM component {}'.format(label)) 
-        for im in range(reconstruct_count):
-          ax[im].set_title('{:.2f}'.format(scores[im]))
-          ax[im].imshow(np.reshape(reconstructions[im], (im_size, im_size)))
-        plt.show()
+        for label in label_sample_dict:
+          reconstructions = sess.run(y_pred, feed_dict={
+            enc_layer_2: label_sample_dict[label][:reconstruct_count]})
+          scores = label_score_dict[label][:reconstruct_count]
+          fig, ax = plt.subplots(1, reconstruct_count, 
+                                 figsize=(reconstruct_count, 2))
+          fig.suptitle('Samples from GMM component {}'.format(label)) 
+          for im in range(reconstruct_count):
+            ax[im].set_title('{:.2f}'.format(scores[im]))
+            ax[im].imshow(np.reshape(reconstructions[im], (im_size, im_size)))
+          plt.show()
     else:
       sess.run(tf.initialize_all_variables())
       # Train
@@ -80,6 +80,7 @@ def main(_):
           avg_cost += batch_cost / batch_count
         if epoch % display_step == 0:
           print("Epoch: {:03d}, cost={:.9f}".format(epoch + 1, avg_cost))
+    if FLAGS.save_dir:
       save_model(sess, saver, mnist, enc_layer_2, x)
     reconstruct(sess, mnist, y_pred, x, reconstruct_count, im_size)
 
@@ -96,18 +97,20 @@ def reconstruct(sess, mnist, y_pred, x, reconstruct_count, im_size):
 def save_model(sess, saver, mnist, enc_layer_2, x):
   saver.save(sess, FLAGS.save_dir + '/model.ckpt')
   # Dump hidden layer vectors
-  with open(FLAGS.data_dir + '/hidden_train', 'w') as f:
+  with open(FLAGS.data_dir + '/hidden_train', 'wb') as f:
+    p = cPickle.Pickler(f)
     for im in mnist.train.images:
-      np.savetxt(f, sess.run(enc_layer_2, feed_dict={x: [im]}))
-  with open(FLAGS.data_dir + '/hidden_test', 'w') as f:
+      p.dump(sess.run(enc_layer_2, feed_dict={x: [im]}))
+  with open(FLAGS.data_dir + '/hidden_test', 'wb') as f:
+    p = cPickle.Pickler(f)
     for im in mnist.test.images:
-      np.savetxt(f, sess.run(enc_layer_2, feed_dict={x: [im]}))
+      p.dump(sess.run(enc_layer_2, feed_dict={x: [im]}))
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--data_dir', type=str, default='/tmp/data',
                       help='Directory for storing data')
-  parser.add_argument('--save_dir', type=str, default='/tmp/data',
+  parser.add_argument('--save_dir', type=str, default=None,
                       help='Directory for saving model')
   parser.add_argument('--load_model', type=str, default=None,
                       help='Directory from which to load model')
