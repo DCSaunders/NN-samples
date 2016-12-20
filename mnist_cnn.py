@@ -4,9 +4,11 @@ from __future__ import print_function
 
 import argparse
 import cPickle
+import random
 import tensorflow as tf
 import numpy as np
 from tensorflow.examples.tutorials.mnist import input_data
+import matplotlib.pyplot as plt
 FLAGS = None
 
 def weight_variable(shape):
@@ -24,7 +26,6 @@ def max_pool_2x2(x):
     return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides= [1, 2, 2, 1], padding='SAME')
 
 def main(_):
-    mnist = input_data.read_data_sets('MNISt_Data', one_hot=True)
     x = tf.placeholder(tf.float32, shape=[None, 784])
     y_ = tf.placeholder(tf.float32, shape=[None,10])
 
@@ -61,15 +62,18 @@ def main(_):
     with tf.Session() as sess:
         tf.set_random_seed(1234)
         if FLAGS.load_model:
-            samples = saver.restore(sess, FLAGS.load_model)
+            saver.restore(sess, FLAGS.load_model)
+            samples = get_samples()
             sample_predictions = []
-            for sample in samples:
-                prediction = sess.run(y_conv, feed_dict={x:sample, 
-                                                         keep_prob: 1.0})
-                sample_predictions.append((sample, prediction))
-            with open(FLAGS.save_dir + '/sample_predictions', 'wb'):
-                cPickle.dump(sample_predictions)
+            predictions = sess.run(y_conv, feed_dict={x: samples, 
+                                                      keep_prob: 1.0})
+            sample_predictions = zip(samples, predictions)
+            plot(sample_predictions)
+            if FLAGS.save_predictions:
+                with open(FLAGS.save_predictions, 'wb') as f:
+                    cPickle.dump(sample_predictions, f)
         else:
+            mnist = input_data.read_data_sets('MNISt_Data', one_hot=True)
             sess.run(tf.initialize_all_variables())
             for i in range(20000):
                 batch = mnist.train.next_batch(50)
@@ -83,17 +87,24 @@ def main(_):
                 x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
             save_model(sess, saver)
 
+def plot(sample_predictions):
+    reconstruct_count = 20
+    fig, ax = plt.subplots(1, reconstruct_count, figsize=(1.2*reconstruct_count, 3))
+    for index, im in enumerate(
+            random.sample(sample_predictions, reconstruct_count)):
+        label = np.argmax(im[1])
+        ax[index].set_title('{} ({:.3f})'.format(label, im[1][label]))
+        ax[index].imshow(np.reshape(im[0], (28, 28)))
+    plt.show()
+
 
 def save_model(sess, saver):
     saver.save(sess, FLAGS.save_dir + '/model.ckpt')
+
+def get_samples():
     samples = []
-    if FLAGS.load_samples:
-        u = cPickle.Unpickler(FLAGS.load_samples)
-        while True:
-            try:
-                hidden.append(u.load())
-            except(EOFError):
-                break
+    with open(FLAGS.load_samples, 'rb') as f:
+        samples = cPickle.load(f)
     return samples
 
 
@@ -107,6 +118,9 @@ if __name__ == '__main__':
                         help='Directory from which to load model')
     parser.add_argument('--load_samples', type=str, default=None,
                         help='Location from which to load pickled samples')
+    parser.add_argument('--save_predictions', type=str, default=None,
+                        help='Location to pickle predictions')
     FLAGS = parser.parse_args()
     np.random.seed(1234)
+    random.seed(1234)
     tf.app.run()

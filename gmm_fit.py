@@ -19,6 +19,8 @@ def get_args():
                         help='Location to load pickled input data and projected data from')
     parser.add_argument('--load_model',  
                         help='Location to load pickled model from')
+    parser.add_argument('--load_lengths', default=False, action='store_true',
+                        help='True if loading data of format {states:[] length:x}')
     parser.add_argument('--save_input',
                         help='Location to save pickled input data')
     parser.add_argument('--save_model',
@@ -62,9 +64,11 @@ def fit_samples(samples, n_components=0, full_covar=False):
     # Fit a Gaussian mixture with EM
     print len(samples)
     samples_per_mode = 100
-    if not n_components:
+    if n_components == 0:
         # rule-of-thumb fitting
         n_components = int(len(samples) / samples_per_mode)
+    else:
+        n_components=int(n_components)
     print 'Fitting GMM with {} components'.format(n_components)
     if full_covar:
         gmm = mixture.GaussianMixture(n_components=n_components, 
@@ -91,9 +95,12 @@ def get_samples(args):
             while True:
                 try:
                     saved = unpickler.load()
-                    sample = np.array(saved['states'][0][0], dtype=float)
-                    samples.append(sample)
-                    lengths.append(saved['length'])
+                    if args.load_lengths:
+                        sample = np.array(saved['states'][0][0], dtype=float)
+                        samples.append(sample)
+                        lengths.append(saved['length'])
+                    else:
+                        samples.append(np.array(saved)[0])
                 except (EOFError):
                     break
             print 'Unpickled {} samples from {}'.format(
@@ -169,7 +176,7 @@ def do_interpolate(train_labels_samples, label_samples, interp_file, interpolate
 
 if __name__ == '__main__':
     args = get_args()
-    n_samples = 100000
+    n_samples = 1000
     n_interpolate = 6
     n_train_samples = 1000
     gmm, train_samples, proj_samples = get_model(args)
