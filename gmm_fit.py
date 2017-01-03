@@ -33,10 +33,12 @@ def get_args():
                         help='Project samples/model into two dimensions using TSNE, and save a plot')
     parser.add_argument('--pickled_in', action='store_true', default=False,
                         help='If true, input vectors must be unpickled')
-    parser.add_argument('--n_components', default=0,
+    parser.add_argument('--n_components', type=int, default=0,
                         help='Number of GMM components to fit')
     parser.add_argument('--full_covar', action='store_true', default=False,
                         help='Set if Gaussians have full, not diagonal, covariance')
+    parser.add_argument('--max_in', type=int, default=0, help='Max number of training inputs - uses all if 0')
+    parser.add_argument('--samples_per_mode', type=int, default=100, help='Average number of training samples per GMM mode')
     parser.add_argument('--interpolate',
                         help='Location to store samples interpolated between training examples')
 
@@ -58,17 +60,17 @@ def plot_clusters(samples, proj_samples, gmix):
     plt.show()
     plt.savefig("fitted_classes.png")
 
-def fit_samples(samples, n_components=0, full_covar=False):
+def fit_samples(samples, samples_per_mode=100, n_components=0,
+                full_covar=False):
     '''Fit GMM to samples
     Args: numpy array of sample coordinates'''
     # Fit a Gaussian mixture with EM
     print len(samples)
-    samples_per_mode = 100
     if n_components == 0:
         # rule-of-thumb fitting
         n_components = int(len(samples) / samples_per_mode)
     else:
-        n_components=int(n_components)
+        n_components=n_components
     print 'Fitting GMM with {} components'.format(n_components)
     if full_covar:
         gmm = mixture.GaussianMixture(n_components=n_components, 
@@ -91,20 +93,23 @@ def get_samples(args):
         if args.pickled_in:
             samples = []
             lengths = []
-            unpickler = cPickle.Unpickler(open(args.file_in, 'rb'))
-            while True:
-                try:
-                    saved = unpickler.load()
-                    if args.load_lengths:
-                        sample = np.array(saved['states'][0][0], dtype=float)
-                        samples.append(sample)
-                        lengths.append(saved['length'])
-                    else:
-                        samples.append(np.array(saved)[0])
-                except (EOFError):
-                    break
-            print 'Unpickled {} samples from {}'.format(
-                len(samples), args.file_in)
+            with open(args.file_in, 'rb') as f:
+                unpickler = cPickle.Unpickler(f)
+                while True:
+                    try:
+                        saved = unpickler.load()
+                        if args.load_lengths:
+                            sample = np.array(saved['states'][0][0], dtype=float)
+                            samples.append(sample)
+                            lengths.append(saved['length'])
+                        else:
+                            samples.append(np.array(saved)[0])
+                        if args.max_in and len(samples) >= args.max_in:
+                            break
+                    except (EOFError):
+                        break
+                print 'Unpickled {} samples from {}'.format(
+                    len(samples), args.file_in)
         else:
             samples = np.loadtxt(args.file_in)
             print 'Loaded samples file from {}'.format(args.file_in)
@@ -123,7 +128,8 @@ def get_model(args):
         with open(args.load_model, 'rb') as f:
             gmm = cPickle.load(f)
     else:
-        gmm = fit_samples(samples, args.n_components, args.full_covar)
+        gmm = fit_samples(samples, args.samples_per_mode, 
+                          args.n_components, args.full_covar)
     return gmm, samples, proj_samples
 
 def save_model(args, gmm, train_samples, proj_samples, label_samples):
