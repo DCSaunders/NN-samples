@@ -158,7 +158,7 @@ def predict_model(gmm, samples, save_labels, interpolate, label_samples, interpo
     if save_labels:
         with open(save_labels, 'wb') as f:
             cPickle.dump(zip(samples, labels), f)
-    elif interpolate:
+    if interpolate:
         do_interpolate(zip(labels, samples), label_samples, interpolate, interpolate_count)
       
 
@@ -170,12 +170,13 @@ def do_interpolate(train_labels_samples, label_samples, interp_file, interpolate
     for k, v in sampled_labels.items():
         print k, len(v)
     for label, train_sample in train_labels_samples:
-        interpolations = [train_sample]
-        rand_sample = sampled_labels[label].pop()
-        increment = (rand_sample - train_sample) / interpolate_count 
-        for interp_num in range(0, interpolate_count):
-            interpolations.append(interpolations[interp_num] + increment)
-        label_interps_dict[label].append(interpolations)
+        if sampled_labels[label]:
+            interpolations = [train_sample]
+            rand_sample = sampled_labels[label].pop()
+            increment = (rand_sample - train_sample) / interpolate_count 
+            for interp_num in range(0, interpolate_count):
+                interpolations.append(interpolations[interp_num] + increment)
+            label_interps_dict[label].append(interpolations)
     with open(interp_file, 'wb') as f:
         cPickle.dump(label_interps_dict, f)
 
