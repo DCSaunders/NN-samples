@@ -5,7 +5,8 @@ import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import numpy as np
 from tsne import tsne
-f_name = '/home/mifs/ds636/exps/mnist/simple_classifier/reconstruction_predictions'
+f_name = '/home/mifs/ds636/exps/mnist/simple_classifier/reconstruct_predicts_vae'
+np.random.seed(1234)
 with open(f_name, 'rb') as f:
     r = cPickle.load(f)
 predictions = np.asarray([item[1] for item in r])

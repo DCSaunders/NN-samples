@@ -53,7 +53,8 @@ def main(_):
     b_fc2 = bias_variable([10])
     y_conv=tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
 
-    cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y_conv), reduction_indices=[1]))
+    cross_entropy = tf.reduce_mean(
+        -tf.reduce_sum(y_ * tf.log(y_conv), reduction_indices=[1]))
     train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
     correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -63,15 +64,17 @@ def main(_):
         tf.set_random_seed(1234)
         if FLAGS.load_model:
             saver.restore(sess, FLAGS.load_model)
-            samples = get_samples()
-            sample_predictions = []
-            predictions = sess.run(y_conv, feed_dict={x: samples, 
+            if FLAGS.load_samples:
+                samples = get_samples()
+                sample_predictions = []
+                predictions = sess.run(y_conv, feed_dict={x: samples, 
                                                       keep_prob: 1.0})
-            sample_predictions = zip(samples, predictions)
-            plot(sample_predictions)
-            if FLAGS.save_predictions:
-                with open(FLAGS.save_predictions, 'wb') as f:
-                    cPickle.dump(sample_predictions, f)
+                sample_predictions = zip(samples, predictions)
+                plot(sample_predictions)
+                if FLAGS.save_predictions:
+                    with open(FLAGS.save_predictions, 'wb') as f:
+                        cPickle.dump(sample_predictions, f)
+            test(sess, accuracy, x, y_, keep_prob)
         else:
             mnist = input_data.read_data_sets('MNISt_Data', one_hot=True)
             sess.run(tf.initialize_all_variables())
@@ -82,10 +85,17 @@ def main(_):
                     x:batch[0], y_: batch[1], keep_prob: 1.0})
                     print("step %d, training accuracy %g"%(i, train_accuracy))
                 train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
+            test(sess, accuracy, x, y_, keep_prob, mnist, saver=saver)
 
-            print("test accuracy %g"%accuracy.eval(feed_dict={
-                x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
-            save_model(sess, saver)
+def test(sess, accuracy, x, y_, keep_prob, mnist=None, saver=None):
+    if mnist is None:
+        mnist = input_data.read_data_sets('MNISt_Data', one_hot=True)
+    print("test accuracy %g"%accuracy.eval(feed_dict={
+        x: mnist.test.images, 
+        y_: mnist.test.labels, 
+        keep_prob: 1.0}))
+    if saver is not None:
+        save_model(sess, saver)
 
 def plot(sample_predictions):
     reconstruct_count = 20

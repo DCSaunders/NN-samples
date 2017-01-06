@@ -5,6 +5,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 import matplotlib.pyplot as plt
+import cPickle
 np.random.seed(0)
 tf.set_random_seed(0)
 
@@ -106,7 +107,7 @@ class VariationalAutoencoder(object):
         generated. Otherwise, z_mu is drawn from prior in latent space.        
         """
         if z_mu is None:
-            z_mu = np.random.normal(size=(1, self.n_z))
+            z_mu = np.random.normal(size=(self.batch_size, self.n_z))
         # Note: This maps to mean of distribution, we could alternatively
         # sample from Gaussian distribution
         return self.sess.run(self.recon_mean, feed_dict={self.z: z_mu})
@@ -144,13 +145,16 @@ def plot_reconstruct(x_sample, x_reconstruct):
         plt.colorbar()
     plt.show()
 
-def plot_generate(vae, reconstruct_count=10):
-    fig, ax = plt.subplots(1, reconstruct_count, figsize=(reconstruct_count, 2))
-    fig.suptitle('Samples from VAE') 
-    for i in range(reconstruct_count):
-        gen = vae.generate()
-        ax[i].imshow(gen.reshape(28, 28), vmin=0, vmax=1)
+def plot_generate(vae, view_count=10, save=None):
+    fig, ax = plt.subplots(1, view_count, figsize=(view_count, 2))
+    fig.suptitle('Samples from VAE')
+    gen = vae.generate() 
+    for i in range(view_count):  
+        ax[i].imshow(gen[i].reshape(28, 28), vmin=0, vmax=1)
     plt.show()
+    if save:
+        with open(save, 'wb') as f_out:
+            cPickle.dump(gen, f_out)
 
 dimensions = dict(n_h_enc_1=300, # Encoder 1st hidden layer size
                   n_h_enc_2=300, # Encoder 2nd hidden layer size
@@ -159,10 +163,12 @@ dimensions = dict(n_h_enc_1=300, # Encoder 1st hidden layer size
                   n_input=784, # MNIST data input (img shape: 28*28)
                   n_z=20)  # Latent variable dimensionality
 mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
+np.random.seed(1234)
 n_samples = mnist.train.num_examples
-batch_size = 100
-vae = train(dimensions, training_epochs=1, batch_size=batch_size)
+batch_size = 1000
+vae = train(dimensions, training_epochs=10, batch_size=batch_size)
 x_sample = mnist.test.next_batch(batch_size)[0]
-x_reconstruct = vae.reconstruct(x_sample)
-plot_reconstruct(x_sample, x_reconstruct)
-#plot_generate(vae)
+#x_reconstruct = vae.reconstruct(x_sample)
+#plot_reconstruct(x_sample, x_reconstruct)
+plot_generate(vae, 
+              save='/home/mifs/ds636/exps/mnist/vae/sample_reconstructions')
