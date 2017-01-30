@@ -105,6 +105,7 @@ def plot(sample_predictions):
         label = np.argmax(im[1])
         ax[index].set_title('{} ({:.3f})'.format(label, im[1][label]))
         ax[index].imshow(np.reshape(im[0], (28, 28)))
+        ax[index].axis('off')
     plt.show()
 
 

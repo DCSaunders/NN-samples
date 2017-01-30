@@ -28,8 +28,9 @@ def main(load, save, max_in, scale):
     for hidden in hidden_list:
         s = np.array(hidden['states'])
         #print np.mean(s), np.std(s)
-        noise_sample = np.random.normal(loc=0.0, scale=scale, size=s.size)
-        hidden['states'] += noise_sample.reshape(s.shape)
+        if scale > 0:
+            noise_sample = np.random.normal(loc=0.0, scale=scale, size=s.size)
+            hidden['states'] += noise_sample.reshape(s.shape)
     pickle_hidden(save, hidden_list)
 
 if __name__ == '__main__':

@@ -166,7 +166,7 @@ mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
 np.random.seed(1234)
 n_samples = mnist.train.num_examples
 batch_size = 1000
-vae = train(dimensions, training_epochs=10, batch_size=batch_size)
+vae = train(dimensions, training_epochs=20, batch_size=batch_size)
 x_sample = mnist.test.next_batch(batch_size)[0]
 #x_reconstruct = vae.reconstruct(x_sample)
 #plot_reconstruct(x_sample, x_reconstruct)
