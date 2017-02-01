@@ -12,12 +12,15 @@ tf.set_random_seed(0)
 class VariationalAutoencoder(object):
     def __init__(self, dimensions, transfer_func=tf.nn.softplus, learning_rate=0.001, batch_size=100, use_lstm=True):
         self.weights = dict()
+        self.n_input = dimensions['n_input']
+        self.n_steps = dimensions['n_steps']
+
         self.initializer = tf.contrib.layers.xavier_initializer()
         self.n_z = dimensions['n_z']
         self.transfer_func = transfer_func
         self.learning_rate = learning_rate
         self.batch_size = batch_size
-        self.x = tf.placeholder(tf.float32, [None, dimensions["n_input"]]) 
+        self.x = tf.placeholder(tf.float32, [self.batch_size, self.n_input]) 
         self._init_cell(dimensions, use_lstm)
         self._init_network(dimensions)
         self._init_optimizer()
@@ -25,23 +28,28 @@ class VariationalAutoencoder(object):
         self.sess.run(tf.initialize_all_variables())
 
     def _init_cell(self, dimensions, use_lstm):
-        self.cell = tf.nn.rnn_cell.LSTMCell(dimensions['n_h'], initializer=self.initializer)
+        self.enc_cell = tf.nn.rnn_cell.LSTMCell(
+            dimensions['n_h'], initializer=self.initializer)
+        self.dec_cell = tf.nn.rnn_cell.LSTMCell(
+            dimensions['n_h'], initializer=self.initializer)
         if use_lstm:
             dimensions['n_state'] = dimensions['n_h'] * 2
-            print 'Using LSTMs: doubling hidden layer size to {}'.format(dimensions['n_state'])
+            print 'Using LSTMs: doubling hidden layer size to {}'.format(
+                dimensions['n_state'])
         else:
             dimensions['n_state'] = dimensions['n_h']
 
     def _init_network(self, dimensions):
         self._init_weights('enc',
                            n_in=dimensions['n_input'],
-                           n_h=dimensions['n_h'],
-                           n_out=dimensions['n_z'])
+                           n_out=dimensions['n_z'],
+                           state_in=dimensions['n_state'],
+                           state_out=dimensions['n_state'])
         self._init_weights('dec',
                            n_in=dimensions['n_z'],
-                           n_h=dimensions['n_h'],
                            n_out=dimensions['n_input'],
-                           state_in=dimensions['n_state'])
+                           state_in=dimensions['n_state'],
+                           state_out=dimensions['n_h'])
         self.z_mean, self.z_log_var = self._enc_network()
         eps = tf.random_normal((self.batch_size, dimensions['n_z']),
                                0, 1, dtype=tf.float32)
@@ -50,48 +58,52 @@ class VariationalAutoencoder(object):
                         tf.mul(tf.sqrt(tf.exp(self.z_log_var)), eps))
         self.recon_mean = self._dec_network()
     
-    def _init_weights(self, name, n_in, n_h, n_out, state_in=0):
+    def _init_weights(self, name, n_in, state_in, state_out, n_out):
         self.weights[name] = dict(
             weights=dict(
-                h=tf.Variable(self.initializer([n_in, n_h])),
-                out_mean=tf.Variable(self.initializer([n_h, n_out])),
-                out_log_var=tf.Variable(self.initializer([n_h, n_out]))),
+                in_state=tf.Variable(self.initializer([n_in, state_in])),
+                out_mean=tf.Variable(self.initializer([state_out, n_out])),
+                out_log_var=tf.Variable(self.initializer([state_out, n_out]))),
             biases=dict(
-                h=tf.Variable(tf.zeros([n_h], dtype=tf.float32)),
+                in_state=tf.Variable(tf.zeros([state_in], dtype=tf.float32)),
                 out_mean=tf.Variable(tf.zeros([n_out], dtype=tf.float32)),
                 out_log_var=tf.Variable(tf.zeros([n_out], dtype=tf.float32))))
-        if state_in > 0:
-             self.weights[name]['weights']['n_h_in'] = tf.Variable(
-                 self.initializer([n_in, state_in]))
-             self.weights[name]['biases']['n_h_in'] = tf.Variable(
-                tf.zeros([state_in], dtype=tf.float32))
 
 
     def _rnn_in(self):
-        return tf.split(split_dim=0, num_split=self.batch_size, value=self.x)
+        # Split to get a list of 'n_steps' tensors of shape (batch_size, n_input)
+        x = tf.split(value=self.x, num_split=self.batch_size, split_dim=0)
+        #x = tf.split(value=x, num_split=self.n_input, split_dim=1)
+        return x
 
 
     def _enc_network(self):
         # Encoder mapping inputs onto Gaussian in latent space
-        w, b = self.weights['enc']['weights'], self.weights['enc']['biases']
-        _, enc_state = rnn.rnn(self.cell, self._rnn_in(), dtype=tf.float32)
-        z_mean = tf.add(tf.matmul(enc_state, w['out_mean']), b['out_mean'])
-        z_log_var = tf.add(tf.matmul(enc_state, w['out_log_var']), b['out_log_var'])
-        return z_mean, z_log_var
+        with tf.variable_scope("encoder"):
+            w, b = self.weights['enc']['weights'], self.weights['enc']['biases']
+            _, enc_state = rnn.rnn(self.enc_cell, self._rnn_in(), dtype=tf.float32)
+            z_mean = tf.add(tf.matmul(enc_state, w['out_mean']), b['out_mean'])
+            z_log_var = tf.add(tf.matmul(enc_state, w['out_log_var']), b['out_log_var'])
+            return z_mean, z_log_var
 
     def _dec_network(self):
         # Decoder mapping latent space onto Bernoulli in data space
-        w, b = self.weights['dec']['weights'], self.weights['dec']['biases']
-        initial_state = self.transfer_func(tf.add(tf.matmul(self.z, w['n_h_in']), b['n_h_in']))
-        dec_out, _ = seq2seq.rnn_decoder(self._rnn_in(), initial_state, self.cell)
-        x_recon_mean = tf.nn.sigmoid(tf.add(tf.matmul(dec_out[-1], w['out_mean']), b['out_mean']))
-        return x_recon_mean
+        with tf.variable_scope("decoder"):
+            w, b = self.weights['dec']['weights'], self.weights['dec']['biases']
+            initial_state = self.transfer_func(
+                tf.add(tf.matmul(self.z, w['in_state']), b['in_state']))
+
+            dec_out, _ = rnn.rnn(self.dec_cell, self._rnn_in(), initial_state=initial_state)
+            #dec_out, _ = seq2seq.rnn_decoder(self._rnn_in(), initial_state, self.cell)
+            x_recon_mean = tf.nn.sigmoid(tf.add(tf.matmul(dec_out[-1], w['out_mean']), b['out_mean']))
+            return x_recon_mean
 
     def _init_optimizer(self):
         # Find encoder (KL divergence) and decoder (E[P(X|z)]) loss
         encoder_loss = -0.5 * tf.reduce_sum(1 + self.z_log_var
                                             - tf.square(self.z_mean)
                                             - tf.exp(self.z_log_var), 1)
+        #TODO: reshape here
         decoder_loss = -tf.reduce_sum(
                           self.x * tf.log(1e-10 + self.recon_mean) 
                         + (1 - self.x) * tf.log(1e-10 + (1 - self.recon_mean)), 1)
@@ -102,8 +114,7 @@ class VariationalAutoencoder(object):
        """Train model based on mini-batch of input data.
        Return cost of mini-batch.
        """
-       _, cost = self.sess.run((self.optimizer, self.cost),
-                               feed_dict={self.x: X})
+       _, cost = self.sess.run((self.optimizer, self.cost), feed_dict={self.x: X})
        return cost
     
     def transform(self, X):
@@ -167,13 +178,14 @@ def plot_generate(vae, view_count=10, save=None):
         with open(save, 'wb') as f_out:
             cPickle.dump(gen, f_out)
 
-dimensions = dict(n_h=300, # RNN cell hidden layer size
-                  n_input=784, # MNIST data input (img shape: 28*28)
+dimensions = dict(n_h=128, # RNN cell hidden layer size
+                  n_steps=1,
+                  n_input=784, #MNIST data input (img shape: 28*28)
                   n_z=20)  # Latent variable dimensionality
 mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
 np.random.seed(1234)
 n_samples = mnist.train.num_examples
-batch_size = 100
+batch_size = 120
 vae = train(dimensions, training_epochs=20, batch_size=batch_size)
 x_sample = mnist.test.next_batch(batch_size)[0]
 #x_reconstruct = vae.reconstruct(x_sample)
