@@ -1,16 +1,19 @@
 import argparse
 import numpy as np
-import tensorflow as tf
+import matplotlib 
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
+import tensorflow as tf
+from tensorflow.python.ops import seq2seq
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import rnn
 from tensorflow.examples.tutorials.mnist import input_data
 FLAGS = None
 
+
 class LSTM_VAE(object):
   def __init__(self, n_hidden, inputs, batch_size, elem_num, step_num, cell,
-               learning_rate=0.001, reverse=True, n_latent=10, transfer_func=tf.nn.softplus,
-               initializer=tf.truncated_normal, decode_with_input=False):
+               learning_rate=0.001, reverse=True, n_latent=10, transfer_func=tf.nn.softplus, initializer=tf.truncated_normal):
     """
     n_hidden : number of hidden elements of each LSTM unit.
     inputs : a list of input tensors with size (batch_size x elem_num)
@@ -20,7 +23,7 @@ class LSTM_VAE(object):
     decode_without_input : Option to decode without input.
     n_latent: number of latent states
     transfer_func: function on latent state to give decoder initial state
-    decode_with_input: true if feeding decoder outputs back into decoder
+    initializer: tf initializer function for weights
     """
     self.batch_size = batch_size
     self.elem_num = elem_num
@@ -32,21 +35,20 @@ class LSTM_VAE(object):
     self.initializer = initializer
     self.transfer_func = transfer_func
     self.learning_rate = learning_rate
-    self.init_reverse = reverse
-    self.decode_with_input = decode_with_input
-    self.build_network(inputs)
+    self.reverse = reverse
+    self.inputs = inputs
+    self.build_network()
 
-  def build_network(self, inputs):
+  def build_network(self):
     with tf.variable_scope('encoder'):
       z_mean_w = tf.Variable(self.initializer([self._enc_cell.state_size, self.n_latent]))
       z_mean_b = tf.Variable(tf.zeros([self.n_latent], dtype=tf.float32))
       z_logvar_w = tf.Variable(self.initializer([self._enc_cell.state_size, self.n_latent]))
       z_logvar_b = tf.Variable(tf.zeros([self.n_latent], dtype=tf.float32))
 
-      _, enc_state = rnn.rnn(self._enc_cell, inputs, dtype=tf.float32)
+      _, enc_state = rnn.rnn(self._enc_cell, self.inputs, dtype=tf.float32)
       self.z_mean = tf.add(tf.matmul(enc_state, z_mean_w), z_mean_b)
       self.z_log_var = tf.add(tf.matmul(enc_state, z_logvar_w), z_logvar_b)
-      #reparameterisaton trick
       eps = tf.random_normal((self.batch_size, self.n_latent), 0, 1, dtype=tf.float32)
       self.z = tf.add(self.z_mean, tf.mul(tf.sqrt(tf.exp(self.z_log_var)), eps))
       
@@ -57,53 +59,55 @@ class LSTM_VAE(object):
       dec_out_w = tf.Variable(self.initializer([self.n_hidden, self.elem_num], dtype=tf.float32))
       dec_out_b = tf.Variable(tf.zeros([self.elem_num], dtype=tf.float32))
 
+      # Decoding using ground truth as inputs
       initial_dec_state = self.transfer_func(tf.add(tf.matmul(self.z, dec_in_w), dec_in_b))
-      #initial_dec_state = enc_state # vanilla autoencoder
-      
-      if self.decode_with_input:
-        dec_state = initial_dec_state
-        dec_input = tf.zeros([self.batch_size, self.elem_num], dtype=tf.float32)
-        dec_out = []
-        for step in range(self.step_num):
-          if step > 0: 
-            scope.reuse_variables()
-          dec_input, dec_state = self._dec_cell(dec_input, dec_state)
-          dec_input = tf.nn.sigmoid(tf.matmul(dec_input, dec_out_w) + dec_out_b)
-          dec_out.append(dec_input)
-        if self.init_reverse:
-          dec_out = dec_out[::-1]
-        self.output = tf.transpose(tf.pack(dec_out), [1, 0, 2])
-      else:
-        dec_inputs = [tf.zeros([self.batch_size, self.elem_num], dtype=tf.float32)
-                      for _ in range(self.step_num)]
-        dec_out, dec_state = rnn.rnn(self._dec_cell, dec_inputs, 
-                                     initial_state=initial_dec_state, dtype=tf.float32)
-        if self.init_reverse:
-          dec_out = dec_out[::-1]
-        dec_output = tf.transpose(tf.pack(dec_out), [1, 0, 2])
-        dec_out_w = tf.tile(tf.expand_dims(dec_out_w, 0), [self.batch_size, 1, 1])
-        self.output = tf.nn.sigmoid(tf.batch_matmul(dec_output, dec_out_w) + dec_out_b)
+      dec_out, _ = seq2seq.rnn_decoder(self.inputs, initial_dec_state, self._dec_cell)
+      if self.reverse:
+        dec_out = dec_out[::-1]
+      dec_output = tf.transpose(tf.pack(dec_out), [1, 0, 2])
+      batch_dec_out_w = tf.tile(tf.expand_dims(dec_out_w, 0), [self.batch_size, 1, 1])
+      self.output = tf.nn.sigmoid(tf.batch_matmul(dec_output, batch_dec_out_w) + dec_out_b)
+    
+      # Generation feeding decoder outputs as inputs
+      dec_gen_input = tf.zeros([self.batch_size, self.elem_num], dtype=tf.float32)
+      dec_gen_out = []
+      dec_gen_state = initial_dec_state
+      for step in range(self.step_num):
+        if step > 0: 
+          scope.reuse_variables()
+        dec_gen_input, dec_gen_state = self._dec_cell(dec_gen_input, dec_gen_state)
+        dec_gen_input = tf.nn.sigmoid(tf.matmul(dec_gen_input, dec_out_w) + dec_out_b)
+        dec_gen_out.append(dec_gen_input)
+      if self.reverse:
+        dec_gen_out = dec_gen_out[::-1]
+      self.gen_output = tf.transpose(tf.pack(dec_gen_out), [1, 0, 2])
 
-    self.inp = tf.transpose(tf.pack(inputs), [1, 0, 2])
-    #VAE loss
+
+    self.inp = tf.transpose(tf.pack(self.inputs), [1, 0, 2])
+    self.train_loss = self.get_loss(train=True)
+    self.dev_loss = self.get_loss(train=False)
+    self.train = tf.train.AdamOptimizer(self.learning_rate).minimize(self.train_loss)
+
+  def get_loss(self, train):
+    if train:
+      out = tf.reshape(self.output, [self.batch_size, self.elem_num * self.step_num])
+    else:
+      out = tf.reshape(self.gen_output, [self.batch_size, self.elem_num * self.step_num])
     inp = tf.reshape(self.inp, [self.batch_size, self.elem_num * self.step_num])
-    out = tf.reshape(self.output, [self.batch_size, self.elem_num * self.step_num])
     encoder_loss = -0.5 * tf.reduce_sum(1 + self.z_log_var
-                                            - tf.square(self.z_mean)
-                                            - tf.exp(self.z_log_var), 1)
+                                        - tf.square(self.z_mean)
+                                        - tf.exp(self.z_log_var), 1)
     decoder_loss = -tf.reduce_sum(inp * tf.log(1e-10 + out) 
                                   + (1 - inp) * tf.log(1e-10 + (1 - out)), 1)
-    self.loss = tf.reduce_mean(encoder_loss + decoder_loss)
+    return tf.reduce_mean(encoder_loss + decoder_loss)
+      
 
-    #self.loss = tf.reduce_mean(tf.square(self.inp - self.output)) # vanilla autoencoder
-    self.train = tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss)
-
-  def generate(self, sess, z_mu=None):
+  def generate(self, x, sess, z_mu=None):
     if z_mu is None:
       z_mu = np.random.normal(size=(self.batch_size, self.n_latent))
-    return sess.run(self.output, {self.z: z_mu})
+    return sess.run(self.gen_output, {self.z: z_mu})
 
-def plot(x_sample, x_reconstruct):
+def plot(x_sample, x_reconstruct, name='plot_rnn_vae'):
     reconstruct_count = 5
     fig, ax = plt.subplots(2, reconstruct_count, figsize=(1.2*reconstruct_count, 3))
     for index in range(0, reconstruct_count):
@@ -111,19 +115,22 @@ def plot(x_sample, x_reconstruct):
       ax[0, index].axis('off')
       ax[1, index].imshow(np.reshape(x_reconstruct[index], (28, 28)), vmin=0, vmax=1)
       ax[1, index].axis('off')
-    plt.show()
+    if FLAGS.save_fig:
+      plt.savefig('{}/{}.png'.format(FLAGS.save_fig, name), bbox_inches='tight')
+    else:
+      plt.show()
 
 def save_model(sess, saver):
   if FLAGS.save_dir:
     saver.save(sess, FLAGS.save_dir + '/model.ckpt')
 
 def main(_):
-  batch_size = 20
+  batch_size = 50
   n_hidden = 50
   n_latent = 20
   step_num = 28
   elem_num = 28
-  iteration = 2000
+  iteration = 1100
   print_iter = 100
   x = tf.placeholder(tf.float32, [batch_size, step_num, elem_num])
   x_list = [tf.squeeze(t, [1]) for t in tf.split(1, step_num, x)]
@@ -143,13 +150,17 @@ def main(_):
       batch_xs = batch_xs.reshape((batch_size, step_num, elem_num))
       sess.run(vae.train, {x: batch_xs})
       if (i % print_iter == 0):
-        loss_val = sess.run(vae.loss, {x: batch_xs})
-        print "iter %d:" % (i+1), loss_val
+        batch_xs, _ = mnist.validation.next_batch(batch_size)
+        batch_xs = batch_xs.reshape((batch_size, step_num, elem_num))
+        loss_val = sess.run(vae.dev_loss, {x: batch_xs})
+        train_loss = sess.run(vae.train_loss, {x: batch_xs})
+        print "iter {}, dev loss {}, train loss {}".format(
+          (i+1), loss_val, train_loss)
     sample_xs, _ = mnist.test.next_batch(batch_size)
     sample_xs = sample_xs.reshape((batch_size, step_num, elem_num))
-    reconstruct_xs = sess.run(vae.output, {x: sample_xs})
-    plot(sample_xs, reconstruct_xs)
-    plot(vae.generate(sess), vae.generate(sess))
+    reconstruct_xs = sess.run(vae.gen_output, {x: sample_xs})
+    plot(sample_xs, reconstruct_xs, 'reconstruct')
+    plot(vae.generate(x, sess), vae.generate(x, sess), 'generate')
     save_model(sess, saver)
 
 
@@ -160,8 +171,8 @@ if __name__ == '__main__':
                       help='Directory for saving model')
   parser.add_argument('--load_model', type=str, default=None,
                       help='Directory from which to load model')
-  parser.add_argument('--save_predictions', type=str, default=None,
-                      help='Location to pickle predictions')
+  parser.add_argument('--save_fig', type=str, default=None,
+                      help='Location to save plots')
   FLAGS = parser.parse_args()
   tf.set_random_seed(1234)
   np.random.seed(1234)
