@@ -16,7 +16,7 @@ class VAE(object):
     self.n_hidden = n_hidden
     self.n_latent = n_latent
     self.kl_weight = 0 if annealing else 1
-    self.z_gen = tf.placeholder(tf.float32, shape=[None], name="zgen")
+    self.z_gen = tf.placeholder(tf.float32, shape=[self.batch_size, self.n_latent], name="zgen")
     self.enc_inputs = [tf.placeholder(tf.int32, shape=[None], name="encoder{}".format(i))
                        for i in range(self.step_num)]
     self.dec_inputs = [tf.placeholder(tf.int32, shape=[None], name="decoder{}".format(i))
@@ -56,6 +56,7 @@ class VAE(object):
                                               dtype=tf.float32))
     dec_in_b = tf.Variable(tf.zeros([self._dec_cell.state_size], dtype=tf.float32))
     dec_initial_state = self.transfer_func(tf.add(tf.matmul(self.z, dec_in_w), dec_in_b))
+    dec_gen_initial_state = self.transfer_func(tf.add(tf.matmul(self.z_gen, dec_in_w), dec_in_b))
 
     with tf.variable_scope('decoder') as scope:
       softmax_w = tf.Variable(self.initializer([self.n_hidden, self.vocab_size]))
@@ -66,17 +67,30 @@ class VAE(object):
                                                         self.n_hidden, output_projection,
                                                         feed_previous=False)
       scope.reuse_variables()
-      dec_gen_outs, _ = tf.nn.seq2seq.embedding_rnn_decoder(self.dec_inputs, dec_initial_state,
+      dec_test_outs, _ = tf.nn.seq2seq.embedding_rnn_decoder(self.dec_inputs, dec_initial_state,
                                                             self._dec_cell, self.vocab_size,
                                                             self.n_hidden, output_projection,
                                                             feed_previous=True,
-                                                            update_embedding_for_previous=True)
+                                                             update_embedding_for_previous=False)
+
+      dec_gen_outs, _ = tf.nn.seq2seq.embedding_rnn_decoder(self.dec_inputs, dec_gen_initial_state,
+                                                             self._dec_cell, self.vocab_size,
+                                                             self.n_hidden, output_projection,
+                                                             feed_previous=True,
+                                                             update_embedding_for_previous=False)
+
       self.logits = [tf.add(tf.matmul(dec_out, softmax_w), softmax_b) 
                      for dec_out in dec_outs]
       self.output = [tf.argmax(tf.nn.softmax(logit), 1) for logit in self.logits]
       
       dec_gen_out = tf.reshape(tf.concat(1, dec_gen_outs), [-1, self.n_hidden])
-      self.gen_output = tf.argmax(tf.nn.softmax(tf.matmul(dec_gen_out, softmax_w) + softmax_b), 1)
+      dec_test_out = tf.reshape(tf.concat(1, dec_test_outs), [-1, self.n_hidden])
+      self.test_output = tf.reshape(
+        tf.argmax(tf.nn.softmax(tf.matmul(dec_test_out, softmax_w) + softmax_b), 1),
+        [self.batch_size, self.step_num + 1])
+      self.gen_output = tf.reshape(
+        tf.argmax(tf.nn.softmax(tf.matmul(dec_gen_out, softmax_w) + softmax_b), 1),
+        [self.batch_size, self.step_num + 1])
     
     seq_loss = tf.nn.seq2seq.sequence_loss_by_example(
         self.logits,
@@ -89,6 +103,13 @@ class VAE(object):
     self.loss = tf.reduce_mean(self.kl_weight * self.kl_loss + self.xentropy_loss)
     self.train = tf.train.AdamOptimizer().minimize(self.loss)
 
+  def generate(self, sess, GO_ID, z_mu=None):
+    if z_mu is None:
+      z_mu = np.random.normal(size=(self.batch_size, self.n_latent))
+    input_feed = {self.z_gen: z_mu}
+    input_feed[self.dec_inputs[0].name] = GO_ID * np.ones(self.batch_size)
+    return sess.run(self.gen_output, input_feed)
+    
 def get_batch(batch_size, step_num, max_val, vae, GO_ID):
   GO_ID = 0
   input_feed = {}
@@ -126,14 +147,14 @@ def save_model(sess, saver):
 def main(_):
   batch_size = 50
   n_hidden = 30
-  n_latent = 5
+  n_latent = 8
   step_num = 8
-  iteration = 200
+  iteration = 300
   print_iter = 100
   max_val = 25
   GO_ID = 1
   vocab_size = max_val + step_num
-  kl_weight_rate = 1
+  kl_weight_rate = 1/10
 
   cell = tf.nn.rnn_cell.LSTMCell(n_hidden)
   vae = VAE(batch_size, step_num, n_hidden, vocab_size, cell, n_latent, annealing=FLAGS.annealing)
@@ -166,10 +187,15 @@ def main(_):
       plot_loss(loss_hist['kl'], loss_hist['xentropy'])
 
     input_feed, input_data = get_batch(batch_size, step_num, max_val, vae, GO_ID)
-    output = sess.run(vae.gen_output, input_feed)
-    output = output.reshape((batch_size, step_num + 1))
+    output = sess.run(vae.test_output, input_feed)
     for in_, out_ in zip(input_data, output):
       print "Input: {}, Output: {}".format(in_, out_[:-1])
+    '''
+    print "Generating"
+    gen_out = vae.generate(sess, GO_ID)
+    for out in gen_out:
+      print out[:-1]
+    '''
     save_model(sess, saver)
 
 if __name__ == '__main__':
