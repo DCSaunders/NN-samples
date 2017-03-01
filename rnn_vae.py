@@ -4,25 +4,34 @@ import numpy as np
 import matplotlib 
 import matplotlib.pyplot as plt
 import tensorflow as tf
+import re
+import subprocess
 from tensorflow.python.ops import rnn
 FLAGS = None
 
+class config(object):
+  GO_ID = 1
+  EOS_ID = 2
+  dev_ref = 'dev_ref'
+  dev_out = 'dev_out'
+
 class VAE(object):
-  def __init__(self, batch_size, step_num, n_hidden, vocab_size, cell, n_latent, 
+  def __init__(self, batch_size, max_len, n_hidden, vocab_size, cell, n_latent, 
                initializer=tf.truncated_normal, transfer_func=tf.nn.softplus, annealing=False):
     self.batch_size = batch_size
-    self.step_num = step_num 
+    self.max_len = max_len 
     self.vocab_size = vocab_size
     self.n_hidden = n_hidden
     self.n_latent = n_latent
     self.kl_weight = 0 if annealing else 1
     self.z_gen = tf.placeholder(tf.float32, shape=[self.batch_size, self.n_latent], name="zgen")
     self.enc_inputs = [tf.placeholder(tf.int32, shape=[None], name="encoder{}".format(i))
-                       for i in range(self.step_num)]
+                       for i in range(self.max_len)]
     self.dec_inputs = [tf.placeholder(tf.int32, shape=[None], name="decoder{}".format(i))
-                       for i in range(self.step_num + 1)]
+                       for i in range(self.max_len + 1)]
     self.loss_weights = [tf.placeholder(tf.float32, shape=[None], name="weight{}".format(i))
-                       for i in range(self.step_num + 1)]
+                       for i in range(self.max_len + 1)]
+    self.seq_len = tf.placeholder(tf.int32, shape=[self.batch_size], name="seqlen")
     self.targets = [self.dec_inputs[i + 1] for i in range(len(self.dec_inputs) - 1)]
     self.targets.append(tf.placeholder(tf.int32, shape=[None], name="last_target"))
     self.initializer = initializer
@@ -49,7 +58,8 @@ class VAE(object):
       embedding = tf.Variable(self.initializer([self.vocab_size, self.n_hidden], dtype=tf.float32))
       embedded_inputs = [tf.nn.embedding_lookup(embedding, enc_input) 
                          for enc_input in self.enc_inputs]
-      _, enc_state = tf.nn.rnn(self._enc_cell, embedded_inputs, dtype=tf.float32)
+      _, enc_state = tf.nn.rnn(self._enc_cell, embedded_inputs, dtype=tf.float32,
+                               sequence_length=self.seq_len)
 
     self.get_latent(enc_state)
     dec_in_w = tf.Variable(self.initializer([self.n_latent, self._dec_cell.state_size],
@@ -87,10 +97,10 @@ class VAE(object):
       dec_test_out = tf.reshape(tf.concat(1, dec_test_outs), [-1, self.n_hidden])
       self.test_output = tf.reshape(
         tf.argmax(tf.nn.softmax(tf.matmul(dec_test_out, softmax_w) + softmax_b), 1),
-        [self.batch_size, self.step_num + 1])
+        [self.batch_size, self.max_len + 1])
       self.gen_output = tf.reshape(
         tf.argmax(tf.nn.softmax(tf.matmul(dec_gen_out, softmax_w) + softmax_b), 1),
-        [self.batch_size, self.step_num + 1])
+        [self.batch_size, self.max_len + 1])
     
     seq_loss = tf.nn.seq2seq.sequence_loss_by_example(
         self.logits,
@@ -103,29 +113,39 @@ class VAE(object):
     self.loss = tf.reduce_mean(self.kl_weight * self.kl_loss + self.xentropy_loss)
     self.train = tf.train.AdamOptimizer().minimize(self.loss)
 
-  def generate(self, sess, GO_ID, z_mu=None):
+  def generate(self, sess, z_mu=None):
     if z_mu is None:
       z_mu = np.random.normal(size=(self.batch_size, self.n_latent))
     input_feed = {self.z_gen: z_mu}
-    input_feed[self.dec_inputs[0].name] = GO_ID * np.ones(self.batch_size)
+    input_feed[self.dec_inputs[0].name] = config.GO_ID * np.ones(self.batch_size)
     return sess.run(self.gen_output, input_feed)
     
-def get_batch(batch_size, step_num, max_val, vae, GO_ID):
-  GO_ID = 0
+
+
+def get_batch(max_val, vae):
   input_feed = {}
-  r = np.random.randint(low=1, high=max_val, size=batch_size).reshape([batch_size, 1])
-  r = np.tile(r, (1, step_num))
-  d = np.linspace(0, step_num, step_num, endpoint=False).reshape([1, step_num])
-  d = np.tile(d, (batch_size, 1))
-  enc_input_data = r + d
-  dec_input_data = np.array([[GO_ID] + list(seq) for seq in enc_input_data])
+  enc_input_data = []
+  seq_len = []
+  loss_weights = np.ones((vae.max_len + 1, vae.batch_size))
+  for seq in range(vae.batch_size):
+    rand_len = np.random.randint(low=2, high=vae.max_len)
+    r = np.random.randint(low=4, high=max_val) * np.ones(rand_len) + range(rand_len)
+    r[-1] = config.EOS_ID
+    enc_input_data.append(np.pad(r, (0, vae.max_len - rand_len), 'constant'))
+    seq_len.append(rand_len)
+    loss_weights[rand_len:, seq] = 0
+
+  enc_input_data = np.array(enc_input_data)
+  dec_input_data = np.array([[config.GO_ID] + list(seq) for seq in enc_input_data])
   target_data = [dec_in[1:] for dec_in in vae.dec_inputs]
-  for l in range(step_num):
+
+  for l in range(vae.max_len):
     input_feed[vae.enc_inputs[l].name] = enc_input_data[:, l]
-  for l in range(step_num + 1):
+  for l in range(vae.max_len + 1):
     input_feed[vae.dec_inputs[l].name] = dec_input_data[:, l]
-    input_feed[vae.loss_weights[l].name] = np.ones(batch_size)
-  input_feed[vae.targets[-1].name] = np.zeros(batch_size)
+    input_feed[vae.loss_weights[l].name] = loss_weights[l, :]
+  input_feed[vae.targets[-1].name] = np.zeros(vae.batch_size)
+  input_feed[vae.seq_len.name] = np.array(seq_len)
   return input_feed, enc_input_data
 
 
@@ -140,26 +160,62 @@ def plot_loss(kl_loss, xentropy):
   else:
     plt.show()
 
-def save_model(sess, saver):
+def save_model(sess, saver, name=''):
   if FLAGS.save_dir:
+    fname = '{}/model.ckpt{}'.format(name)
     saver.save(sess, FLAGS.save_dir + '/model.ckpt')
 
+def bleu_eval(vae, dev_feed, sess, saver, best_bleu):
+  dev_out = sess.run(vae.test_output, dev_feed)
+  save_batch(dev_out, config.dev_out)
+  cat = subprocess.Popen(("cat", config.dev_out), stdout=subprocess.PIPE)
+  try:
+    multibleu = subprocess.check_output(("/home/mifs/ds636/code/scripts/multi-bleu.perl", 
+                                         config.dev_ref), stdin=cat.stdout)
+    print "{}".format(multibleu)
+    m = re.match("BLEU = ([\d.]+),", multibleu)
+    new_bleu = float(m.group(1))
+    if new_bleu > best_bleu:
+      print 'Model achieves new best bleu'
+      save_model(sess, saver, name='-dev_bleu')
+    return new_bleu
+  except Exception, e:
+    print "Multi-bleu error: {}".format(e)
+    return 0.0
+
+def get_dev_ref(vae, max_val):
+  dev_feed, dev_data = get_batch(max_val, vae)
+  save_batch(dev_data, config.dev_ref)
+  return dev_feed
+
+def save_batch(data, fname):
+  with open(fname, 'w') as f_out:
+    for out in data:
+      out = out.astype(int).tolist()
+      try:
+        out = out[:out.index(config.EOS_ID)]
+      except ValueError:
+        pass
+      f_out.write('{}\n'.format(' '.join(map(str, out))))    
+   
 def main(_):
   batch_size = 50
   n_hidden = 30
-  n_latent = 8
-  step_num = 8
-  iteration = 300
-  print_iter = 100
+  n_latent = 10
+  max_len = 15
+  max_iter = 500
+  dev_eval_iter = 100
   max_val = 25
-  GO_ID = 1
-  vocab_size = max_val + step_num
+  min_val = 4
+  vocab_size = max_val + max_len
   kl_weight_rate = 1/10
-
+  best_dev_bleu = 0.0
+             
   cell = tf.nn.rnn_cell.LSTMCell(n_hidden)
-  vae = VAE(batch_size, step_num, n_hidden, vocab_size, cell, n_latent, annealing=FLAGS.annealing)
+  vae = VAE(batch_size, max_len, n_hidden, vocab_size, cell, n_latent, annealing=FLAGS.annealing)
   loss_hist = {'kl': [], 'xentropy': []}
   saver = tf.train.Saver()
+  dev_feed = get_dev_ref(vae, max_val)
 
   with tf.Session() as sess:
     if FLAGS.load_model:
@@ -167,10 +223,10 @@ def main(_):
     else:
       sess.run(tf.initialize_all_variables())
 
-    for i in range(iteration):
+    for i in range(max_iter):
       if FLAGS.annealing:
         vae.kl_weight = 1 - np.exp(-i * kl_weight_rate)
-      input_feed, _ = get_batch(batch_size, step_num, max_val, vae, GO_ID)
+      input_feed, _ = get_batch(max_val, vae)
 
       if FLAGS.plot_loss:
         _, kl_loss, xentropy_loss = sess.run([vae.train, vae.kl_loss, vae.xentropy_loss], input_feed)
@@ -179,24 +235,29 @@ def main(_):
       else:
         sess.run(vae.train, input_feed)
       
-      if (i % print_iter == 0):
+      if (i % dev_eval_iter == 0):
         loss_val = sess.run(vae.loss, input_feed)
-        print "iter {}, train loss {}".format((i+1), loss_val)
+        dev_bleu = bleu_eval(vae, dev_feed, sess, saver, best_dev_bleu)
+        best_dev_bleu = max(dev_bleu, best_dev_bleu)
+        print "iter {}, train loss {}, dev BLEU {}".format((i+1), loss_val, dev_bleu)
         
     if FLAGS.plot_loss:
       plot_loss(loss_hist['kl'], loss_hist['xentropy'])
 
-    input_feed, input_data = get_batch(batch_size, step_num, max_val, vae, GO_ID)
+    input_feed, input_data = get_batch(max_val, vae)
     output = sess.run(vae.test_output, input_feed)
     for in_, out_ in zip(input_data, output):
-      print "Input: {}, Output: {}".format(in_, out_[:-1])
+      if config.EOS_ID in out_:
+        out_ = out_[:list(out_).index(config.EOS_ID)]
+      print "Input: {}, Output: {}".format(in_, out_)
     '''
     print "Generating"
-    gen_out = vae.generate(sess, GO_ID)
+    gen_out = vae.generate(sess)
     for out in gen_out:
-      print out[:-1]
+      print out[:list(out).index(config.EOS_ID)]
     '''
     save_model(sess, saver)
+
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
